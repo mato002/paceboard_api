@@ -1,0 +1,26 @@
+name: PaceBoard API CI
+
+on:
+  push:
+    paths:
+      - 'paceboard-api/**'
+  pull_request:
+    paths:
+      - 'paceboard-api/**'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: paceboard-api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, pdo_mysql
+      - run: composer install --no-interaction
+      - run: cp .env.example .env && php artisan key:generate
+      - run: php artisan migrate --force
+      - run: php artisan test

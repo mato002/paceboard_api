@@ -1,0 +1,42 @@
+services:
+  app:
+    build: .
+    volumes:
+      - .:/var/www/html
+    depends_on:
+      - db
+    environment:
+      APP_ENV: production
+      APP_DEBUG: "false"
+      APP_URL: https://localhost
+      DB_CONNECTION: mysql
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_DATABASE: paceboard
+      DB_USERNAME: paceboard
+      DB_PASSWORD: secret
+
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "8080:80"
+    volumes:
+      - .:/var/www/html
+      - ./docker/nginx.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - app
+
+  db:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: paceboard
+      MYSQL_USER: paceboard
+      MYSQL_PASSWORD: secret
+      MYSQL_ROOT_PASSWORD: rootsecret
+    volumes:
+      - dbdata:/var/lib/mysql
+    ports:
+      - "3307:3306"
+
+volumes:
+  dbdata:
