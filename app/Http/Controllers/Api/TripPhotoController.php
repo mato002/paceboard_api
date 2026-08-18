@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Trip;
 use App\Models\TripPhoto;
+use App\Support\MediaUrl;
 use App\Support\TripVisibility;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -20,7 +21,7 @@ class TripPhotoController extends Controller
         $photos = $trip->photos()->with('user:id,name')->latest()->get()->map(fn ($p) => [
             ...$p->toArray(),
             'media_type' => $p->media_type ?? 'image',
-            'url' => Storage::disk('public')->url($p->path),
+            'url' => MediaUrl::photo($p),
         ]);
 
         return response()->json(['photos' => $photos]);
@@ -60,7 +61,7 @@ class TripPhotoController extends Controller
             'message' => 'Photo uploaded',
             'photo' => [
                 ...$photo->toArray(),
-                'url' => Storage::disk('public')->url($path),
+                'url' => MediaUrl::photo($photo),
             ],
         ], 201);
     }

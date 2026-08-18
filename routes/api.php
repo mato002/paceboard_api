@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\TripController;
 use App\Http\Controllers\Api\CommunityReportController;
 use App\Http\Controllers\Api\LeaderboardController;
 use App\Http\Controllers\Api\VehicleController;
+use App\Http\Controllers\Api\MediaController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\AccountController;
@@ -31,6 +32,8 @@ use App\Http\Controllers\Api\DeployController;
 
 Route::get('/share/{token}', [TripExtrasController::class, 'showShared']);
 Route::get('/users/{user}/avatar', [ProfileController::class, 'avatar']);
+Route::get('/media/photos/{photo}', [MediaController::class, 'showPhoto']);
+Route::get('/media/files/{path}', [MediaController::class, 'showFile'])->where('path', '.*');
 
 Route::get('/docs', [\App\Http\Controllers\Api\DocsController::class, 'index']);
 Route::get('/docs/openapi.json', [\App\Http\Controllers\Api\DocsController::class, 'openapi']);

@@ -37,6 +37,8 @@ class DocsController extends Controller
                 ['PUT', '/api/profile', 'Update profile', true],
                 ['POST', '/api/profile/avatar', 'Upload avatar (multipart)', true],
                 ['GET', '/api/users/{id}/avatar', 'Public profile photo', false],
+                ['GET', '/api/media/photos/{id}', 'Stream a gallery or trip photo', false],
+                ['GET', '/api/media/files/{path}', 'Stream a public storage file', false],
                 ['POST', '/api/profile/photos', 'Upload a gallery photo or video', true],
                 ['DELETE', '/api/profile/photos/{id}', 'Delete own gallery photo', true],
                 ['GET', '/api/drivers/{id}', 'Public driver profile', true],

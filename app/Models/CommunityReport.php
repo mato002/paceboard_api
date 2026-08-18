@@ -33,6 +33,11 @@ class CommunityReport extends Model
         return $this->belongsTo(User::class);
     }
 
+    public function getPhotoUrlAttribute(?string $value): ?string
+    {
+        return \App\Support\MediaUrl::path($value);
+    }
+
     public function getConfidenceAttribute(): int
     {
         $value = 50

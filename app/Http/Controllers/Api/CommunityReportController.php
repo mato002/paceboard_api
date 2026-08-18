@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Models\CommunityReport;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 
 class CommunityReportController extends Controller
 {
@@ -124,7 +123,7 @@ class CommunityReportController extends Controller
             'longitude' => $request->longitude,
             'road_name' => $request->road_name,
             'description' => $request->description,
-            'photo_url' => $photoPath ? Storage::disk('public')->url($photoPath) : null,
+            'photo_url' => $photoPath,
             'verification_score' => 0,
             'confirmations_count' => 0,
             'dismissals_count' => 0,

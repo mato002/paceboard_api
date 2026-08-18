@@ -11,9 +11,9 @@ use App\Models\Route;
 use App\Models\SavedTrip;
 use App\Models\Trip;
 use App\Models\TripPhoto;
+use App\Support\MediaUrl;
 use App\Support\TripVisibility;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 
 class FeedController extends Controller
 {
@@ -60,7 +60,7 @@ class FeedController extends Controller
                     'photo_count' => $photos->count(),
                     'photos' => $photos->take(4)->map(fn ($p) => [
                         'id' => $p->id,
-                        'url' => Storage::disk('public')->url($p->path),
+                        'url' => MediaUrl::photo($p),
                         'trip_id' => $p->trip_id,
                     ])->values(),
                     'created_at' => $first->created_at?->toIso8601String(),
@@ -215,9 +215,9 @@ class FeedController extends Controller
             'end_lat' => $trip->end_lat !== null ? (float) $trip->end_lat : null,
             'end_lng' => $trip->end_lng !== null ? (float) $trip->end_lng : null,
             'cover_photo_url' => $trip->photos->first()
-                ? Storage::disk('public')->url($trip->photos->first()->path)
+                ? MediaUrl::photo($trip->photos->first())
                 : null,
-            'photo_urls' => $trip->photos->map(fn ($p) => Storage::disk('public')->url($p->path))->values()->all(),
+            'photo_urls' => $trip->photos->map(fn ($p) => MediaUrl::photo($p))->values()->all(),
             'distance_km' => round((float) $trip->distance, 1),
             'duration_seconds' => $trip->duration_seconds,
             'average_speed' => round((float) $trip->average_speed, 1),

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\TripPhoto;
 use App\Models\User;
+use App\Support\MediaUrl;
 use App\Support\TripVisibility;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -76,7 +77,7 @@ class ProfileController extends Controller
                 'media_type' => $photo->media_type ?? 'image',
                 'latitude' => $photo->latitude,
                 'longitude' => $photo->longitude,
-                'url' => Storage::disk('public')->url($photo->path),
+                'url' => MediaUrl::photo($photo),
                 'created_at' => $photo->created_at,
             ]);
 
@@ -125,7 +126,7 @@ class ProfileController extends Controller
                 'trip_id' => $photo->trip_id,
                 'caption' => $photo->caption,
                 'media_type' => $photo->media_type,
-                'url' => Storage::disk('public')->url($path),
+                'url' => MediaUrl::photo($photo),
                 'created_at' => $photo->created_at,
             ],
         ], 201);
