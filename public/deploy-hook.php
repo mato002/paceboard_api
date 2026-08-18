@@ -16,6 +16,7 @@ $autoload = null;
 foreach ([
     __DIR__.'/../vendor/autoload.php',
     __DIR__.'/../../paceboard/vendor/autoload.php',
+    '/home/zhenhlkl/paceboard/vendor/autoload.php',
 ] as $path) {
     if (is_file($path)) {
         $autoload = $path;
