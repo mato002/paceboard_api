@@ -39,66 +39,15 @@ jobs:
             **/.env
             **/.env.*
 
-      # Drop stale Laravel caches so newly uploaded routes can load.
-      # Do not fail the job if a cache file is already absent.
-      - name: Clear Stale Laravel Caches
+      # Find the live index.php, upload the hook next to it, and drop stale route/config cache.
+      - name: Upload Hook And Clear Caches
         env:
           FTP_SERVER: ${{ secrets.FTP_SERVER }}
           FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
           FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
-        run: |
-          set -u
-          HOST="$(printf '%s' "$FTP_SERVER" | tr -d '\r' | xargs)"
-          HOST="${HOST#ftp://}"
-          HOST="${HOST#ftps://}"
-          for file in config.php routes-v7.php routes.php events.php; do
-            curl --silent --show-error --connect-timeout 20 \
-              --user "$FTP_USERNAME:$FTP_PASSWORD" \
-              --quote "DELE /paceboard/bootstrap/cache/$file" \
-              "ftp://$HOST/" || true
-          done
+        run: python3 deploy-web/upload_hook.py
 
-      # Upload only deploy-hook.php. A folder sync would delete index.php.
-      - name: Upload Deploy Hook PHP
-        env:
-          FTP_SERVER: ${{ secrets.FTP_SERVER }}
-          FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
-          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
-        run: |
-          set -euo pipefail
-          HOST="$(printf '%s' "$FTP_SERVER" | tr -d '\r' | xargs)"
-          HOST="${HOST#ftp://}"
-          HOST="${HOST#ftps://}"
-          REMOTE="public_html/paceboard/deploy-hook.php"
-
-          if curl --fail --show-error --silent --connect-timeout 20 --ftp-create-dirs \
-            --user "$FTP_USERNAME:$FTP_PASSWORD" \
-            -T deploy-web/deploy-hook.php \
-            "ftp://$HOST/$REMOTE"; then
-            echo "Uploaded deploy-hook.php over FTP"
-          elif curl --fail --show-error --silent --connect-timeout 20 --ftp-create-dirs --ssl --insecure \
-            --user "$FTP_USERNAME:$FTP_PASSWORD" \
-            -T deploy-web/deploy-hook.php \
-            "ftp://$HOST/$REMOTE"; then
-            echo "Uploaded deploy-hook.php over FTPES"
-          else
-            curl --fail --show-error --silent --connect-timeout 20 --ftp-create-dirs \
-              --user "$FTP_USERNAME:$FTP_PASSWORD" \
-              -T deploy-web/deploy-hook.php \
-              "ftps://$HOST/$REMOTE"
-            echo "Uploaded deploy-hook.php over FTPS"
-          fi
-
-          CODE="$(curl -sS -o /tmp/hook_get -w '%{http_code}' 'https://paceboard.zhengkyc.com/deploy-hook.php')"
-          echo "GET https://paceboard.zhengkyc.com/deploy-hook.php => HTTP $CODE"
-          cat /tmp/hook_get || true
-          echo
-          if [ "$CODE" != "405" ]; then
-            echo "Expected HTTP 405 (hook PHP is present). Got $CODE — file is not in the document root."
-            exit 1
-          fi
-
-      # Step 3: Trigger protected post-deploy tasks (migrate/cache) without SSH
+      # Prefer the Laravel API route; fall back to the standalone PHP file.
       - name: Run Post-Deploy Hook
         env:
           DEPLOY_HOOK_TOKEN: ${{ secrets.DEPLOY_HOOK_TOKEN }}
@@ -107,15 +56,35 @@ jobs:
             echo "DEPLOY_HOOK_TOKEN secret is missing."
             exit 1
           fi
-          echo "Calling https://paceboard.zhengkyc.com/deploy-hook.php"
-          HTTP_CODE="$(curl -sS -o /tmp/hook_resp -w '%{http_code}' \
-            -X POST 'https://paceboard.zhengkyc.com/deploy-hook.php' \
-            -H "X-Deploy-Token: $DEPLOY_HOOK_TOKEN" \
-            -H 'Accept: application/json' \
-            -H 'Content-Type: application/json')"
-          echo "Hook HTTP $HTTP_CODE"
-          cat /tmp/hook_resp || true
-          echo
-          if [ "$HTTP_CODE" != "200" ]; then
-            exit 1
-          fi
+
+          call_hook() {
+            local url="$1"
+            local code
+            code="$(curl -sS -o /tmp/hook_resp -w '%{http_code}' \
+              -X POST "$url" \
+              -H "X-Deploy-Token: $DEPLOY_HOOK_TOKEN" \
+              -H 'Accept: application/json' \
+              -H 'Content-Type: application/json')"
+            echo "POST $url => HTTP $code" >&2
+            cat /tmp/hook_resp >&2 || true
+            echo >&2
+            echo "$code"
+          }
+
+          for url in \
+            "https://paceboard.zhengkyc.com/api/internal/deploy" \
+            "https://paceboard.zhengkyc.com/internal/deploy" \
+            "https://paceboard.zhengkyc.com/deploy-hook.php"
+          do
+            HTTP_CODE="$(call_hook "$url" | tail -n 1)"
+            if [ "$HTTP_CODE" = "200" ]; then
+              exit 0
+            fi
+            if [ "$HTTP_CODE" = "401" ] || [ "$HTTP_CODE" = "403" ]; then
+              echo "Hook is reachable but rejected the request (check production .env DEPLOY_HOOK_ENABLED / DEPLOY_HOOK_TOKEN)."
+              exit 1
+            fi
+          done
+
+          echo "All deploy hook URLs returned 404 or another error."
+          exit 1

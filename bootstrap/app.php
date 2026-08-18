@@ -21,6 +21,11 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->throttleApi('api');
 
+        $middleware->validateCsrfTokens(except: [
+            'internal/deploy',
+            'deploy-hook.php',
+        ]);
+
         $middleware->redirectGuestsTo('/admin/login');
     })
     ->withExceptions(function (Exceptions $exceptions): void {

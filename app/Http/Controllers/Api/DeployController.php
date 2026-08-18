@@ -11,8 +11,8 @@ class DeployController extends Controller
 {
     public function run(Request $request): JsonResponse
     {
-        $enabled = (bool) config('paceboard.deploy.enabled', false);
-        $expectedToken = (string) config('paceboard.deploy.hook_token', '');
+        $enabled = filter_var($this->envValue('DEPLOY_HOOK_ENABLED') ?? config('paceboard.deploy.enabled', false), FILTER_VALIDATE_BOOLEAN);
+        $expectedToken = (string) ($this->envValue('DEPLOY_HOOK_TOKEN') ?? config('paceboard.deploy.hook_token', ''));
         $providedToken = (string) $request->header('X-Deploy-Token', '');
 
         if (! $enabled) {
@@ -24,8 +24,8 @@ class DeployController extends Controller
         }
 
         $commands = [
-            'migrate --force',
             'optimize:clear',
+            'migrate --force',
             'config:cache',
             'route:cache',
         ];
@@ -51,5 +51,32 @@ class DeployController extends Controller
             'message' => 'Deployment tasks completed',
             'results' => $results,
         ]);
+    }
+
+    private function envValue(string $key): ?string
+    {
+        $file = base_path('.env');
+        if (! is_file($file)) {
+            return null;
+        }
+
+        foreach (file($file, FILE_IGNORE_NEW_LINES) ?: [] as $line) {
+            $line = trim($line);
+            if ($line === '' || str_starts_with($line, '#') || ! str_starts_with($line, $key.'=')) {
+                continue;
+            }
+
+            $value = trim(substr($line, strlen($key) + 1));
+            if (
+                (str_starts_with($value, '"') && str_ends_with($value, '"'))
+                || (str_starts_with($value, "'") && str_ends_with($value, "'"))
+            ) {
+                $value = substr($value, 1, -1);
+            }
+
+            return $value;
+        }
+
+        return null;
     }
 }
