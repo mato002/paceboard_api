@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Upload deploy-hook.php next to live index.php and drop stale Laravel caches."""
+"""Put deploy-hook.php in /public_html/paceboard (the subdomain document root)."""
 
 from __future__ import annotations
 
@@ -21,27 +21,8 @@ if ":" in HOST and HOST.rsplit(":", 1)[-1].isdigit():
     HOST, port_s = HOST.rsplit(":", 1)
     PORT = int(port_s)
 
-SEARCH_DIRS = [
-    "",
-    "paceboard",
-    "public_html",
-    "public_html/paceboard",
-    "public_html/dashboard",
-    "dashboard",
-    "www",
-    "www/paceboard",
-    "paceboard/public",
-]
 
-CACHE_DIRS = [
-    "paceboard/bootstrap/cache",
-    "bootstrap/cache",
-    "public_html/paceboard/bootstrap/cache",
-]
-CACHE_FILES = ["config.php", "routes-v7.php", "routes.php", "events.php"]
-
-
-def connect():
+def connect() -> FTP:
     errors = []
     for cls, label, tls in ((FTP_TLS, "FTP_TLS", True), (FTP, "FTP", False)):
         try:
@@ -61,33 +42,60 @@ def connect():
     raise SystemExit("FTP connect failed: " + " | ".join(errors))
 
 
-def names(ftp: FTP) -> list[str]:
+def listing(ftp: FTP) -> list[str]:
+    lines: list[str] = []
     try:
-        entries = ftp.nlst()
-    except Exception as exc:
-        print(f"  nlst failed: {exc}")
-        return []
-    cleaned = []
-    for item in entries:
-        cleaned.append(item.replace("\\", "/").rstrip("/").split("/")[-1])
-    return cleaned
+        ftp.retrlines("LIST -a", lines.append)
+    except Exception:
+        try:
+            ftp.retrlines("LIST", lines.append)
+        except Exception as exc:
+            print(f"LIST failed at {ftp.pwd()}: {exc}")
+            return []
+    print(f"LIST {ftp.pwd()}:")
+    for line in lines:
+        print(" ", line)
+    names = []
+    for line in lines:
+        names.append(line.split()[-1].replace("\\", "/").split("/")[-1])
+    return names
 
 
-def cwd(ftp: FTP, home: str, rel: str) -> bool:
+def cwd_parts(ftp: FTP, home: str, rel: str) -> bool:
     ftp.cwd(home)
     try:
         for part in rel.split("/"):
             if part:
                 ftp.cwd(part)
         return True
-    except error_perm:
+    except error_perm as exc:
+        print(f"Cannot enter {rel} from {home}: {exc}")
         return False
 
 
-def upload_here(ftp: FTP, label: str) -> None:
+def looks_like_web_root(names: list[str]) -> bool:
+    return "index.php" in names and "artisan" not in names and "composer.json" not in names
+
+
+def upload(ftp: FTP) -> None:
     with open(LOCAL_FILE, "rb") as handle:
         ftp.storbinary("STOR deploy-hook.php", handle)
-    print(f"Uploaded deploy-hook.php into {label or '.'}")
+    print(f"STORed deploy-hook.php into {ftp.pwd()}")
+
+
+def delete_caches(ftp: FTP, home: str) -> None:
+    for rel in ("paceboard/bootstrap/cache", "bootstrap/cache"):
+        if not cwd_parts(ftp, home, rel):
+            continue
+        names = listing(ftp)
+        for cache_file in ("config.php", "routes-v7.php", "routes.php", "events.php"):
+            if cache_file not in names:
+                continue
+            try:
+                ftp.delete(cache_file)
+                print(f"Deleted {rel}/{cache_file}")
+            except Exception as exc:
+                print(f"Could not delete {rel}/{cache_file}: {exc}")
 
 
 def main() -> int:
@@ -98,43 +106,52 @@ def main() -> int:
     ftp = connect()
     home = ftp.pwd()
     print(f"FTP home: {home}")
-    print("Home listing:", ", ".join(names(ftp)) or "(empty)")
+    home_names = listing(ftp)
 
-    uploaded = 0
-    for rel in SEARCH_DIRS:
-        if not cwd(ftp, home, rel):
+    # File Manager path: /public_html/paceboard
+    candidates = []
+    if home.rstrip("/").endswith("public_html"):
+        candidates.append("paceboard")
+    if "public_html" in home_names:
+        candidates.append("public_html/paceboard")
+    candidates.extend(["public_html/paceboard", "paceboard"])
+
+    seen: set[str] = set()
+    uploaded_ok = False
+    for rel in candidates:
+        if rel in seen:
             continue
-        listing = names(ftp)
-        label = rel or "."
-        print(f"Listing {label}: {', '.join(listing[:40])}")
-        is_app_root = "artisan" in listing or "composer.json" in listing
-        if "index.php" in listing and not is_app_root:
-            try:
-                upload_here(ftp, label)
-                uploaded += 1
-            except Exception as exc:
-                print(f"Upload failed in {label}: {exc}")
-        if is_app_root and "public" in listing:
-            if cwd(ftp, home, f"{rel}/public" if rel else "public") and "index.php" in names(ftp):
-                try:
-                    upload_here(ftp, f"{label}/public")
-                    uploaded += 1
-                except Exception as exc:
-                    print(f"Upload failed in {label}/public: {exc}")
-
-    for cache_dir in CACHE_DIRS:
-        if not cwd(ftp, home, cache_dir):
+        seen.add(rel)
+        if not cwd_parts(ftp, home, rel):
             continue
-        print(f"Cache dir {cache_dir}: {', '.join(names(ftp))}")
-        for cache_file in CACHE_FILES:
-            try:
-                ftp.delete(cache_file)
-                print(f"Deleted {cache_dir}/{cache_file}")
-            except Exception as exc:
-                print(f"Could not delete {cache_dir}/{cache_file}: {exc}")
+        names = listing(ftp)
+        if not looks_like_web_root(names):
+            print(f"Skipping {rel} (not the public document root)")
+            continue
+        try:
+            upload(ftp)
+        except Exception as exc:
+            print(f"STOR failed in {rel}: {exc}")
+            continue
+        names_after = listing(ftp)
+        if "deploy-hook.php" not in names_after:
+            print(f"deploy-hook.php missing after upload into {rel}")
+            continue
+        uploaded_ok = True
+        break
 
+    delete_caches(ftp, home)
     ftp.quit()
-    print(f"Hook uploads: {uploaded}")
+
+    if not uploaded_ok:
+        print(
+            "Could not write deploy-hook.php into public_html/paceboard.\n"
+            "The GitHub FTP account is not landing in the folder you see in File Manager.\n"
+            "In cPanel → FTP Accounts, the account Directory must be /home/zhenhlkl "
+            "(not a subfolder). Then GitHub can see public_html/paceboard."
+        )
+        return 1
+
     return 0
 
 
