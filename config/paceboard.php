@@ -34,6 +34,10 @@ return [
         'units' => env('WEATHER_UNITS', 'metric'),
     ],
 
+    'auto_migrate' => (bool) env('PACEBOARD_AUTO_MIGRATE', true),
+
+    'setup_token' => env('SETUP_TOKEN', ''),
+
     'deploy' => [
         'enabled' => (bool) env('DEPLOY_HOOK_ENABLED', false),
         'hook_token' => env('DEPLOY_HOOK_TOKEN', ''),

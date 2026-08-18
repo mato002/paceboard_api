@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Models\UserNotification;
 use App\Observers\UserNotificationObserver;
+use App\Support\DatabaseBootstrapper;
 use App\View\Composers\AdminLayoutComposer;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
@@ -21,6 +22,8 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        DatabaseBootstrapper::ensureReady();
+
         RateLimiter::for('api', fn (Request $request) => Limit::perMinute(120)->by($request->user()?->id ?: $request->ip()));
         RateLimiter::for('auth', fn (Request $request) => Limit::perMinute(10)->by($request->ip()));
         RateLimiter::for('otp', fn (Request $request) => Limit::perMinute(3)->by($request->user()?->id ?: $request->ip()));

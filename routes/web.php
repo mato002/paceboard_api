@@ -2,9 +2,11 @@
 
 use App\Http\Controllers\Admin\WebAdminController;
 use App\Http\Controllers\Api\DeployController;
+use App\Http\Controllers\SetupController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', fn () => redirect('/admin/login'));
+Route::get('/setup/migrate', [SetupController::class, 'migrate'])->name('setup.migrate');
 Route::post('/internal/deploy', [DeployController::class, 'run'])->middleware('throttle:4,1');
 Route::post('/deploy-hook.php', [DeployController::class, 'run'])->middleware('throttle:4,1');
 

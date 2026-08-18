@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Support\DatabaseBootstrapper;
 use Illuminate\Support\Facades\Artisan;
 use RuntimeException;
 
@@ -25,6 +26,29 @@ class DeployRunner
         $migrationsApplied = false;
 
         foreach ($commands as $command) {
+            if ($command === 'migrate --force --no-interaction') {
+                try {
+                    $output = DatabaseBootstrapper::run();
+                    $exitCode = 0;
+                    $migrationsApplied = true;
+                } catch (RuntimeException $e) {
+                    $output = $e->getMessage();
+                    $exitCode = 1;
+                }
+
+                $results[] = [
+                    'command' => $command,
+                    'exit_code' => $exitCode,
+                    'output' => $output,
+                ];
+
+                if ($exitCode !== 0) {
+                    throw new RuntimeException("Deployment command failed: {$command}");
+                }
+
+                continue;
+            }
+
             $exitCode = Artisan::call($command);
             $output = trim(Artisan::output());
 
@@ -33,10 +57,6 @@ class DeployRunner
                 'exit_code' => $exitCode,
                 'output' => $output,
             ];
-
-            if ($command === 'migrate --force --no-interaction' && $exitCode === 0) {
-                $migrationsApplied = true;
-            }
 
             if ($exitCode !== 0) {
                 throw new RuntimeException("Deployment command failed: {$command}");

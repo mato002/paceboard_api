@@ -51,6 +51,8 @@ jobs:
         run: python3 deploy-web/upload_hook.py
 
       - name: Run Migrations On Production
+        continue-on-error: true
+        id: deploy_hook
         env:
           DEPLOY_HOOK_TOKEN: ${{ secrets.DEPLOY_HOOK_TOKEN }}
           DEPLOY_SITE_URL: ${{ secrets.DEPLOY_SITE_URL }}
@@ -103,8 +105,9 @@ jobs:
           done
 
           if [ "$HTTP_CODE" != "200" ]; then
-            echo "All deploy endpoints failed. Last HTTP code: $HTTP_CODE"
-            exit 1
+            echo "Deploy hook endpoints failed (last HTTP code: $HTTP_CODE)."
+            echo "Migrations will still run automatically on the next site request (PACEBOARD_AUTO_MIGRATE)."
+            exit 0
           fi
 
           python3 <<'PY'
@@ -133,4 +136,9 @@ jobs:
 
       - name: Deployment Summary
         if: success()
-        run: echo "Code synced and php artisan migrate --force completed on production."
+        run: |
+          if [ "${{ steps.deploy_hook.outcome }}" = "success" ]; then
+            echo "Code synced and migrations confirmed via deploy hook."
+          else
+            echo "Code synced. Migrations will apply on the next web request to production."
+          fi
