@@ -34,17 +34,19 @@ jobs:
             **/.env
             **/.env.*
 
-      - name: Upload deploy-hook.php To Public Folder
+      - name: Upload deploy-hook.php (optional)
+        continue-on-error: true
         env:
           FTP_SERVER: ${{ secrets.FTP_SERVER }}
           FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
           FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+          FTP_PUBLIC_DIR: ${{ secrets.FTP_PUBLIC_DIR }}
         run: python3 deploy-web/upload_hook.py
 
       - name: Run Migrations On Production
         env:
           DEPLOY_HOOK_TOKEN: ${{ secrets.DEPLOY_HOOK_TOKEN }}
-          DEPLOY_HOOK_URL: ${{ secrets.DEPLOY_HOOK_URL }}
+          DEPLOY_SITE_URL: ${{ secrets.DEPLOY_SITE_URL }}
         run: |
           set -euo pipefail
 
@@ -53,18 +55,8 @@ jobs:
             exit 1
           fi
 
-          HOOK_URL="${DEPLOY_HOOK_URL:-https://paceboard.zhengkyc.com/deploy-hook.php}"
-
-          echo "Checking deploy hook at $HOOK_URL"
-          GET_CODE="$(curl -sS -o /tmp/hook_get -w '%{http_code}' "$HOOK_URL")"
-          echo "GET => HTTP $GET_CODE"
-          cat /tmp/hook_get || true
-          echo
-
-          if [ "$GET_CODE" != "405" ]; then
-            echo "deploy-hook.php is not reachable at $HOOK_URL (expected GET 405)."
-            exit 1
-          fi
+          SITE="${DEPLOY_SITE_URL:-https://paceboard.zhengkyc.com}"
+          SITE="${SITE%/}"
 
           invoke_hook() {
             local url="$1"
@@ -75,30 +67,35 @@ jobs:
               -H 'Content-Type: application/json'
           }
 
-          HTTP_CODE="$(invoke_hook "$HOOK_URL")"
-          echo "POST $HOOK_URL => HTTP $HTTP_CODE"
-          cat /tmp/hook_resp || true
-          echo
+          ENDPOINTS=(
+            "$SITE/internal/deploy"
+            "$SITE/deploy-hook.php"
+            "$SITE/public/deploy-hook.php"
+          )
 
-          if [ "$HTTP_CODE" = "401" ] || [ "$HTTP_CODE" = "403" ]; then
-            echo "Deploy hook rejected the request."
-            echo "On the server /paceboard/.env set:"
-            echo "  DEPLOY_HOOK_ENABLED=true"
-            echo "  DEPLOY_HOOK_TOKEN=<same as GitHub secret DEPLOY_HOOK_TOKEN>"
-            exit 1
-          fi
-
-          if [ "$HTTP_CODE" != "200" ]; then
-            FALLBACK="${HOOK_URL%/deploy-hook.php}/internal/deploy"
-            echo "Primary hook failed. Trying fallback $FALLBACK"
-            HTTP_CODE="$(invoke_hook "$FALLBACK")"
-            echo "POST $FALLBACK => HTTP $HTTP_CODE"
+          HTTP_CODE=""
+          for url in "${ENDPOINTS[@]}"; do
+            echo "Trying POST $url"
+            HTTP_CODE="$(invoke_hook "$url")"
+            echo "=> HTTP $HTTP_CODE"
             cat /tmp/hook_resp || true
             echo
-          fi
+
+            if [ "$HTTP_CODE" = "200" ]; then
+              break
+            fi
+
+            if [ "$HTTP_CODE" = "401" ] || [ "$HTTP_CODE" = "403" ]; then
+              echo "Deploy hook rejected the request."
+              echo "On the server /paceboard/.env set:"
+              echo "  DEPLOY_HOOK_ENABLED=true"
+              echo "  DEPLOY_HOOK_TOKEN=<same as GitHub secret DEPLOY_HOOK_TOKEN>"
+              exit 1
+            fi
+          done
 
           if [ "$HTTP_CODE" != "200" ]; then
-            echo "Deploy hook failed with HTTP $HTTP_CODE"
+            echo "All deploy endpoints failed. Last HTTP code: $HTTP_CODE"
             exit 1
           fi
 

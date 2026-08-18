@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Put deploy-hook.php in /public_html/paceboard (the subdomain document root)."""
+"""Upload deploy-hook.php to the live web document root when FTP can reach it."""
 
 from __future__ import annotations
 
@@ -24,12 +24,12 @@ if ":" in HOST and HOST.rsplit(":", 1)[-1].isdigit():
 
 def connect() -> FTP:
     errors = []
-    for cls, label, tls in ((FTP_TLS, "FTP_TLS", True), (FTP, "FTP", False)):
+    for cls, label, _tls in ((FTP_TLS, "FTP_TLS", True), (FTP, "FTP", False)):
         try:
             ftp = cls()
             ftp.connect(HOST, PORT, timeout=30)
             ftp.login(USER, PASSWORD)
-            if tls:
+            if cls is FTP_TLS:
                 try:
                     ftp.prot_p()
                 except Exception:
@@ -65,7 +65,9 @@ def cwd_parts(ftp: FTP, home: str, rel: str) -> bool:
     ftp.cwd(home)
     try:
         for part in rel.split("/"):
-            if part:
+            if part == "..":
+                ftp.cwd("..")
+            elif part:
                 ftp.cwd(part)
         return True
     except error_perm as exc:
@@ -77,6 +79,10 @@ def looks_like_web_root(names: list[str]) -> bool:
     return "index.php" in names and "artisan" not in names and "composer.json" not in names
 
 
+def looks_like_laravel_app(names: list[str]) -> bool:
+    return "artisan" in names and "public" in names
+
+
 def upload(ftp: FTP) -> None:
     with open(LOCAL_FILE, "rb") as handle:
         ftp.storbinary("STOR deploy-hook.php", handle)
@@ -84,7 +90,7 @@ def upload(ftp: FTP) -> None:
 
 
 def delete_caches(ftp: FTP, home: str) -> None:
-    for rel in ("paceboard/bootstrap/cache", "bootstrap/cache"):
+    for rel in ("bootstrap/cache", "paceboard/bootstrap/cache"):
         if not cwd_parts(ftp, home, rel):
             continue
         names = listing(ftp)
@@ -98,6 +104,38 @@ def delete_caches(ftp: FTP, home: str) -> None:
                 print(f"Could not delete {rel}/{cache_file}: {exc}")
 
 
+def candidate_paths(home: str, home_names: list[str]) -> list[str]:
+    paths: list[str] = []
+
+    custom = os.environ.get("FTP_PUBLIC_DIR", "").strip().strip("/")
+    if custom:
+        paths.append(custom)
+
+    if looks_like_laravel_app(home_names):
+        paths.append("public")
+
+    if home.rstrip("/").endswith("public_html"):
+        paths.append("paceboard")
+
+    for rel in (
+        "public_html/paceboard",
+        "../public_html/paceboard",
+        "../../public_html/paceboard",
+        "../../../public_html/paceboard",
+        "paceboard/public",
+        "../paceboard/public",
+        "public",
+        "paceboard",
+    ):
+        if rel not in paths:
+            paths.append(rel)
+
+    if "public_html" in home_names:
+        paths.insert(0, "public_html/paceboard")
+
+    return paths
+
+
 def main() -> int:
     if not os.path.isfile(LOCAL_FILE):
         print(f"Missing {LOCAL_FILE}")
@@ -108,20 +146,8 @@ def main() -> int:
     print(f"FTP home: {home}")
     home_names = listing(ftp)
 
-    # File Manager path: /public_html/paceboard
-    candidates = []
-    if home.rstrip("/").endswith("public_html"):
-        candidates.append("paceboard")
-    if "public_html" in home_names:
-        candidates.append("public_html/paceboard")
-    candidates.extend(["public_html/paceboard", "paceboard"])
-
-    seen: set[str] = set()
     uploaded_ok = False
-    for rel in candidates:
-        if rel in seen:
-            continue
-        seen.add(rel)
+    for rel in candidate_paths(home, home_names):
         if not cwd_parts(ftp, home, rel):
             continue
         names = listing(ftp)
@@ -138,6 +164,7 @@ def main() -> int:
             print(f"deploy-hook.php missing after upload into {rel}")
             continue
         uploaded_ok = True
+        print(f"deploy-hook.php uploaded to {ftp.pwd()}")
         break
 
     delete_caches(ftp, home)
@@ -145,12 +172,16 @@ def main() -> int:
 
     if not uploaded_ok:
         print(
-            "Could not write deploy-hook.php into public_html/paceboard.\n"
-            "The GitHub FTP account is not landing in the folder you see in File Manager.\n"
-            "In cPanel → FTP Accounts, the account Directory must be /home/zhenhlkl "
-            "(not a subfolder). Then GitHub can see public_html/paceboard."
+            "Could not upload deploy-hook.php to a public web root over FTP.\n"
+            "This is OK when migrations run via https://your-domain/internal/deploy instead.\n"
+            "If you need deploy-hook.php in public_html, point the FTP account to /home/zhenhlkl "
+            "or set FTP_PUBLIC_DIR in GitHub secrets."
         )
-        return 1
+        custom = os.environ.get("FTP_PUBLIC_DIR", "").strip()
+        if custom:
+            print(f"FTP_PUBLIC_DIR was set to {custom!r} but upload still failed.")
+            return 1
+        return 0
 
     return 0
 
