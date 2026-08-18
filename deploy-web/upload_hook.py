@@ -10,7 +10,10 @@ from ftplib import FTP, FTP_TLS, error_perm
 HOST = os.environ["FTP_SERVER"].strip()
 USER = os.environ["FTP_USERNAME"]
 PASSWORD = os.environ["FTP_PASSWORD"]
-LOCAL_FILE = os.path.join("deploy-web", "deploy-hook.php")
+LOCAL_FILES = (
+    ("deploy-hook.php", os.path.join("deploy-web", "deploy-hook.php")),
+    ("serve-media.php", os.path.join("deploy-web", "serve-media.php")),
+)
 
 for prefix in ("ftp://", "ftps://"):
     if HOST.lower().startswith(prefix):
@@ -83,10 +86,10 @@ def looks_like_laravel_app(names: list[str]) -> bool:
     return "artisan" in names and "public" in names
 
 
-def upload(ftp: FTP) -> None:
-    with open(LOCAL_FILE, "rb") as handle:
-        ftp.storbinary("STOR deploy-hook.php", handle)
-    print(f"STORed deploy-hook.php into {ftp.pwd()}")
+def upload(ftp: FTP, remote_name: str, local_file: str) -> None:
+    with open(local_file, "rb") as handle:
+        ftp.storbinary(f"STOR {remote_name}", handle)
+    print(f"STORed {remote_name} into {ftp.pwd()}")
 
 
 def delete_caches(ftp: FTP, home: str) -> None:
@@ -137,8 +140,9 @@ def candidate_paths(home: str, home_names: list[str]) -> list[str]:
 
 
 def main() -> int:
-    if not os.path.isfile(LOCAL_FILE):
-        print(f"Missing {LOCAL_FILE}")
+    missing = [local for _, local in LOCAL_FILES if not os.path.isfile(local)]
+    if missing:
+        print("Missing " + ", ".join(missing))
         return 1
 
     ftp = connect()
@@ -155,16 +159,17 @@ def main() -> int:
             print(f"Skipping {rel} (not the public document root)")
             continue
         try:
-            upload(ftp)
+            for remote_name, local_file in LOCAL_FILES:
+                upload(ftp, remote_name, local_file)
         except Exception as exc:
             print(f"STOR failed in {rel}: {exc}")
             continue
         names_after = listing(ftp)
-        if "deploy-hook.php" not in names_after:
-            print(f"deploy-hook.php missing after upload into {rel}")
+        if "serve-media.php" not in names_after:
+            print(f"serve-media.php missing after upload into {rel}")
             continue
         uploaded_ok = True
-        print(f"deploy-hook.php uploaded to {ftp.pwd()}")
+        print(f"media + deploy hooks uploaded to {ftp.pwd()}")
         break
 
     delete_caches(ftp, home)

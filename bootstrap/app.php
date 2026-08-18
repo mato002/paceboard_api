@@ -5,6 +5,12 @@ use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
 
+$cachedRoutes = __DIR__.'/cache/routes-v7.php';
+if (is_file($cachedRoutes) && ! str_contains((string) file_get_contents($cachedRoutes), 'api/media/photos')) {
+    @unlink($cachedRoutes);
+    @unlink(__DIR__.'/cache/routes.php');
+}
+
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
         web: __DIR__.'/../routes/web.php',
