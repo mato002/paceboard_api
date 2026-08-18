@@ -27,11 +27,13 @@ use App\Http\Controllers\Api\TelemetryController;
 use App\Http\Controllers\Api\OfflineSyncController;
 use App\Http\Controllers\Api\AnalyticsController;
 use App\Http\Controllers\Api\SosController;
+use App\Http\Controllers\Api\DeployController;
 
 Route::get('/share/{token}', [TripExtrasController::class, 'showShared']);
 
 Route::get('/docs', [\App\Http\Controllers\Api\DocsController::class, 'index']);
 Route::get('/docs/openapi.json', [\App\Http\Controllers\Api\DocsController::class, 'openapi']);
+Route::post('/internal/deploy', [DeployController::class, 'run'])->middleware('throttle:4,1');
 
 Route::middleware('throttle:auth')->group(function () {
     Route::post('/register', [AuthController::class, 'register']);

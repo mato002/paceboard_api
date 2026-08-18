@@ -33,4 +33,9 @@ return [
         'api_key' => env('OPENWEATHER_API_KEY'),
         'units' => env('WEATHER_UNITS', 'metric'),
     ],
+
+    'deploy' => [
+        'enabled' => (bool) env('DEPLOY_HOOK_ENABLED', false),
+        'hook_token' => env('DEPLOY_HOOK_TOKEN', ''),
+    ],
 ];

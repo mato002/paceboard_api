@@ -46,3 +46,11 @@ jobs:
             **/storage/framework/views/**
             **/.env
             **/.env.*
+
+      # Step 3: Trigger protected post-deploy tasks (migrate/cache) without SSH
+      - name: Run Post-Deploy Hook
+        run: |
+          curl --fail --show-error --silent \
+            -X POST "${{ secrets.DEPLOY_HOOK_URL }}" \
+            -H "X-Deploy-Token: ${{ secrets.DEPLOY_HOOK_TOKEN }}" \
+            -H "Accept: application/json"
