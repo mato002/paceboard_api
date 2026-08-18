@@ -1,9 +1,11 @@
 <?php
 
 use App\Http\Controllers\Admin\WebAdminController;
+use App\Http\Controllers\Api\DeployController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', fn () => redirect('/admin/login'));
+Route::post('/internal/deploy', [DeployController::class, 'run'])->middleware('throttle:4,1');
 
 Route::get('/admin/login', [WebAdminController::class, 'showLogin'])->name('login');
 Route::post('/admin/login', [WebAdminController::class, 'login'])->middleware('throttle:admin-login');

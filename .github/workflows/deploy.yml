@@ -39,8 +39,19 @@ jobs:
             **/.env
             **/.env.*
 
-      # Do not overwrite public_html/paceboard/index.php — it has custom paths
-      # to the Laravel app outside public_html.
+      # Upload only the standalone hook into the web document root.
+      # Do not overwrite index.php (custom paths to the Laravel app).
+      - name: Sync Deploy Hook To Web Root
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          local-dir: ./public/
+          server-dir: /public_html/paceboard/
+          exclude: |
+            *
+            !deploy-hook.php
 
       # Step 3a: Validate deploy-hook secrets exist
       - name: Validate Post-Deploy Hook Secrets
