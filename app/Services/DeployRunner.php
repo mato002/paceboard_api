@@ -19,7 +19,6 @@ class DeployRunner
             'optimize:clear',
             'migrate --force --no-interaction',
             'config:cache',
-            'route:cache',
         ];
 
         $results = [];
