@@ -47,7 +47,22 @@ class LeaderboardEnrichmentService
     public function enrichEntry(Leaderboard $entry, string $category, string $period): array
     {
         $user = $entry->user;
-        $stats = $user ? $this->periodStats($user, $period) : [];
+        $stats = [];
+        $rankDelta = null;
+
+        if ($user) {
+            try {
+                $stats = $this->periodStats($user, $period);
+            } catch (\Throwable) {
+                $stats = [];
+            }
+
+            try {
+                $rankDelta = $this->rankDelta($user->id, $category, $period, (int) $entry->rank_position);
+            } catch (\Throwable) {
+                $rankDelta = null;
+            }
+        }
 
         return [
             'id' => $entry->id,
@@ -56,19 +71,19 @@ class LeaderboardEnrichmentService
             'period' => $entry->period,
             'rank_position' => $entry->rank_position,
             'score_value' => round((float) $entry->score_value, 2),
-            'rank_delta' => $user ? $this->rankDelta($user->id, $category, $period, (int) $entry->rank_position) : null,
+            'rank_delta' => $rankDelta,
             'user' => $user ? [
                 'id' => $user->id,
                 'name' => $user->name,
                 'country' => $user->country,
                 'avatar_url' => $user->avatar_url,
-                'period_distance_km' => $stats['distance_km'],
-                'period_trips' => $stats['trips'],
-                'period_safety_score' => $stats['safety_score'],
-                'period_drive_hours' => $stats['drive_hours'],
-                'community_reports' => $stats['community_reports'],
-                'community_confirmations' => $stats['community_confirmations'],
-                'community_helpful' => $stats['community_helpful'],
+                'period_distance_km' => $stats['distance_km'] ?? null,
+                'period_trips' => $stats['trips'] ?? null,
+                'period_safety_score' => $stats['safety_score'] ?? null,
+                'period_drive_hours' => $stats['drive_hours'] ?? null,
+                'community_reports' => $stats['community_reports'] ?? null,
+                'community_confirmations' => $stats['community_confirmations'] ?? null,
+                'community_helpful' => $stats['community_helpful'] ?? null,
             ] : null,
         ];
     }
@@ -78,7 +93,7 @@ class LeaderboardEnrichmentService
         $context = [
             'my_rank' => $myEntry?->rank_position,
             'my_score' => $myEntry ? round((float) $myEntry->score_value, 2) : null,
-            'my_rank_delta' => $myEntry ? $this->rankDelta($userId, $category, $period, (int) $myEntry->rank_position) : null,
+            'my_rank_delta' => null,
             'points_to_next_rank' => null,
             'next_rank' => null,
             'my_breakdown' => null,
@@ -86,6 +101,12 @@ class LeaderboardEnrichmentService
 
         if (! $myEntry) {
             return $context;
+        }
+
+        try {
+            $context['my_rank_delta'] = $this->rankDelta($userId, $category, $period, (int) $myEntry->rank_position);
+        } catch (\Throwable) {
+            $context['my_rank_delta'] = null;
         }
 
         $myRank = (int) $myEntry->rank_position;
@@ -163,7 +184,7 @@ class LeaderboardEnrichmentService
 
     private function topLeaderboardEntry(string $category, string $period, string $scope, User $viewer): ?array
     {
-        $query = Leaderboard::with('user:id,name,country,avatar_path')
+        $query = Leaderboard::with('user')
             ->where('category', $category)
             ->where('period', $period)
             ->orderByDesc('score_value');
@@ -232,7 +253,7 @@ class LeaderboardEnrichmentService
             $query->whereHas('user', fn ($q) => $q->where('country', $viewer->country));
         }
 
-        $reports = $query->get(['user_id', 'confirmations_count']);
+        $reports = $query->get();
 
         return $reports->groupBy('user_id')->map(function ($group) use ($mode) {
             return match ($mode) {
@@ -260,12 +281,12 @@ class LeaderboardEnrichmentService
             ->where('user_id', $user->id)
             ->whereNotNull('ended_at')
             ->whereBetween('ended_at', [$start, $end])
-            ->get(['distance', 'score', 'duration_seconds']);
+            ->get();
 
         $reports = CommunityReport::query()
             ->where('user_id', $user->id)
             ->whereBetween('created_at', [$start, $end])
-            ->get(['confirmations_count', 'verification_score']);
+            ->get();
 
         $driveSeconds = (int) $trips->sum('duration_seconds');
 
@@ -370,7 +391,7 @@ class LeaderboardEnrichmentService
         if ($category === 'community') {
             return CommunityReport::query()
                 ->whereBetween('created_at', [$start, $end])
-                ->get(['user_id', 'confirmations_count'])
+                ->get()
                 ->groupBy('user_id')
                 ->map(fn ($group) => ($group->count() * 10) + ($group->sum('confirmations_count') * 5));
         }

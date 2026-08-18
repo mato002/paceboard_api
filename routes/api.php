@@ -30,6 +30,7 @@ use App\Http\Controllers\Api\SosController;
 use App\Http\Controllers\Api\DeployController;
 
 Route::get('/share/{token}', [TripExtrasController::class, 'showShared']);
+Route::get('/users/{user}/avatar', [ProfileController::class, 'avatar']);
 
 Route::get('/docs', [\App\Http\Controllers\Api\DocsController::class, 'index']);
 Route::get('/docs/openapi.json', [\App\Http\Controllers\Api\DocsController::class, 'openapi']);
@@ -58,6 +59,8 @@ Route::middleware(['auth:sanctum', 'maintenance', 'throttle:api'])->group(functi
     Route::get('/profile', [ProfileController::class, 'show']);
     Route::put('/profile', [ProfileController::class, 'update']);
     Route::post('/profile/avatar', [ProfileController::class, 'uploadAvatar']);
+    Route::post('/profile/photos', [ProfileController::class, 'storePhoto']);
+    Route::delete('/profile/photos/{photo}', [ProfileController::class, 'destroyPhoto']);
     Route::get('/drivers/nearby', [ProfileController::class, 'nearby']);
     Route::get('/drivers/{user}', [ProfileController::class, 'showPublic']);
     Route::get('/drivers/{user}/trips', [ProfileController::class, 'driverTrips']);
@@ -121,6 +124,7 @@ Route::middleware(['auth:sanctum', 'maintenance', 'throttle:api'])->group(functi
 
     Route::get('/challenges', [ChallengeController::class, 'index']);
     Route::get('/challenges/mine', [ChallengeController::class, 'myChallenges']);
+    Route::get('/challenges/summary', [ChallengeController::class, 'summary']);
     Route::get('/challenges/{challenge}', [ChallengeController::class, 'show']);
     Route::post('/challenges/{challenge}/join', [ChallengeController::class, 'join']);
 

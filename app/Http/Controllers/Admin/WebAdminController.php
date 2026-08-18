@@ -8,11 +8,13 @@ use App\Models\Challenge;
 use App\Models\CommunityReport;
 use App\Models\Leaderboard;
 use App\Models\Role;
+use App\Models\Route as DrivingRoute;
 use App\Models\RouteLeaderboard;
 use App\Models\SosAlert;
 use App\Models\Trip;
 use App\Models\User;
 use App\Models\UserNotification;
+use App\Models\Vehicle;
 use App\Services\FcmService;
 use App\Services\SettingsService;
 use Illuminate\Http\Request;
@@ -128,7 +130,7 @@ class WebAdminController extends Controller
         }
 
         if ($trip->route_id) {
-            \App\Models\Route::whereKey($trip->route_id)->decrement('total_trips');
+            DrivingRoute::whereKey($trip->route_id)->decrement('total_trips');
         }
 
         ActivityLog::record('trip_deleted', Auth::id(), ['trip_id' => $trip->id]);
@@ -200,10 +202,99 @@ class WebAdminController extends Controller
         return back()->with('status', "Broadcast sent to {$sent} devices");
     }
 
-    public function sosAlerts()
+    public function reports(Request $request)
     {
+        $query = CommunityReport::with('user:id,name,email');
+        $status = $request->string('status')->toString() ?: 'all';
+        $type = $request->string('type')->toString();
+        $search = $request->string('q')->trim()->toString();
+
+        if ($status === 'active') {
+            $query->where('is_active', true);
+        } elseif ($status === 'inactive') {
+            $query->where('is_active', false);
+        }
+
+        if ($type !== '') {
+            $query->where('type', $type);
+        }
+
+        if ($search !== '') {
+            $query->where(function ($q) use ($search) {
+                $q->where('road_name', 'like', "%{$search}%")
+                    ->orWhere('description', 'like', "%{$search}%")
+                    ->orWhereHas('user', fn ($user) => $user->where('name', 'like', "%{$search}%"));
+            });
+        }
+
+        return view('admin.reports', [
+            'reports' => $query->latest()->paginate(25)->withQueryString(),
+            'status' => $status,
+            'type' => $type,
+            'search' => $search,
+            'types' => CommunityReport::query()->distinct()->orderBy('type')->pluck('type'),
+        ]);
+    }
+
+    public function createReport(Request $request)
+    {
+        $validated = $request->validate([
+            'type' => 'required|string|in:speed_camera,accident,pothole,traffic,police,hazard,road_closure,construction,fuel_price,parking,restaurant,breakdown,flooding,debris,school_zone',
+            'latitude' => 'required|numeric|between:-90,90',
+            'longitude' => 'required|numeric|between:-180,180',
+            'road_name' => 'nullable|string|max:255',
+            'description' => 'nullable|string|max:1000',
+        ]);
+
+        CommunityReport::create([
+            ...$validated,
+            'user_id' => Auth::id(),
+            'verification_score' => 0,
+            'confirmations_count' => 0,
+            'dismissals_count' => 0,
+            'status' => 'active',
+            'is_active' => true,
+            'last_confirmed_at' => now(),
+            'expires_at' => CommunityReport::expiryForType($validated['type']),
+        ]);
+
+        ActivityLog::record('report_created', Auth::id(), ['type' => $validated['type']]);
+
+        return back()->with('status', 'Road alert created');
+    }
+
+    public function activateReport(CommunityReport $report)
+    {
+        $report->update([
+            'is_active' => true,
+            'status' => 'active',
+            'expires_at' => CommunityReport::expiryForType($report->type),
+        ]);
+        ActivityLog::record('report_activated', Auth::id(), ['report_id' => $report->id]);
+
+        return back()->with('status', 'Alert is live for drivers');
+    }
+
+    public function deleteReport(CommunityReport $report)
+    {
+        ActivityLog::record('report_deleted', Auth::id(), ['report_id' => $report->id, 'type' => $report->type]);
+        $report->delete();
+
+        return back()->with('status', 'Alert deleted');
+    }
+
+    public function sosAlerts(Request $request)
+    {
+        $status = $request->string('status')->toString() ?: 'active';
+        $query = SosAlert::with('user:id,name,phone');
+
+        if (in_array($status, ['active', 'resolved'], true)) {
+            $query->where('status', $status);
+        }
+
         return view('admin.sos', [
-            'alerts' => SosAlert::with('user:id,name,phone')->where('status', 'active')->latest()->paginate(25),
+            'alerts' => $query->latest()->paginate(25)->withQueryString(),
+            'status' => $status,
         ]);
     }
 
@@ -241,6 +332,54 @@ class WebAdminController extends Controller
         return back()->with('status', 'Challenge created');
     }
 
+    public function routes()
+    {
+        return view('admin.routes', [
+            'routes' => DrivingRoute::withCount('trips')->latest()->paginate(25),
+        ]);
+    }
+
+    public function toggleRoutePopular(DrivingRoute $drivingRoute)
+    {
+        $drivingRoute->update(['is_popular' => ! $drivingRoute->is_popular]);
+        ActivityLog::record('route_popular_toggled', Auth::id(), ['route_id' => $drivingRoute->id, 'is_popular' => $drivingRoute->is_popular]);
+
+        return back()->with('status', $drivingRoute->is_popular ? 'Route marked popular' : 'Route unmarked popular');
+    }
+
+    public function vehicles()
+    {
+        return view('admin.vehicles', [
+            'vehicles' => Vehicle::with('user:id,name,email')->latest()->paginate(25),
+        ]);
+    }
+
+    public function leaderboards(Request $request)
+    {
+        $category = $request->string('category')->toString() ?: 'safety';
+        $period = $request->string('period')->toString() ?: 'monthly';
+
+        return view('admin.leaderboards', [
+            'entries' => Leaderboard::with('user:id,name,email')
+                ->where('category', $category)
+                ->where('period', $period)
+                ->orderBy('rank_position')
+                ->paginate(50)
+                ->withQueryString(),
+            'category' => $category,
+            'period' => $period,
+            'categories' => Leaderboard::query()->distinct()->orderBy('category')->pluck('category'),
+            'periods' => Leaderboard::query()->distinct()->orderBy('period')->pluck('period'),
+        ]);
+    }
+
+    public function activityLogs()
+    {
+        return view('admin.activity', [
+            'logs' => ActivityLog::with('user:id,name')->latest()->paginate(40),
+        ]);
+    }
+
     public function logout(Request $request)
     {
         Auth::logout();
@@ -252,7 +391,7 @@ class WebAdminController extends Controller
 
     public function deactivateReport(Request $request, CommunityReport $report)
     {
-        $report->update(['is_active' => false]);
+        $report->update(['is_active' => false, 'status' => 'archived']);
 
         if ($request->header('Turbo-Frame') === 'recent-reports') {
             return view('admin.panels.recent-reports', [

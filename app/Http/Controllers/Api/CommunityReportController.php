@@ -128,9 +128,13 @@ class CommunityReportController extends Controller
             'verification_score' => 0,
             'confirmations_count' => 0,
             'dismissals_count' => 0,
-            'status' => 'pending',
+            'status' => 'active',
+            'is_active' => true,
+            'last_confirmed_at' => now(),
             'expires_at' => CommunityReport::expiryForType($request->type),
         ]);
+
+        app(\App\Services\ChallengeProgressService::class)->updateAfterReport($request->user());
 
         return response()->json([
             'message' => 'Report submitted successfully',

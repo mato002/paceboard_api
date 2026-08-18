@@ -700,7 +700,20 @@
     $initial = $user ? strtoupper(substr($user->name, 0, 1)) : 'A';
     $nav = fn ($pattern) => request()->is($pattern) ? 'active' : '';
     $segments = collect(request()->segments())->slice(1);
-    $currentPage = $segments->last() ? ucfirst(str_replace('-', ' ', $segments->last())) : 'Dashboard';
+    $pageTitles = [
+        'dashboard' => 'Dashboard',
+        'users' => 'Users',
+        'trips' => 'Trips',
+        'reports' => 'Road Alerts',
+        'sos' => 'SOS Alerts',
+        'challenges' => 'Challenges',
+        'routes' => 'Routes',
+        'vehicles' => 'Vehicles',
+        'leaderboards' => 'Leaderboards',
+        'activity' => 'Activity Log',
+        'settings' => 'Settings',
+    ];
+    $currentPage = $pageTitles[$segments->last()] ?? ($segments->last() ? ucfirst(str_replace('-', ' ', $segments->last())) : 'Dashboard');
     $avatarUrl = 'https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&w=80&h=80&q=80';
 @endphp
 
@@ -733,9 +746,11 @@
                data-turbo-frame="main-content" data-turbo-action="advance">
                 <i class="fa-solid fa-route"></i><span class="label">Trips</span>
             </a>
-            <a href="/admin/challenges" class="nav-link {{ $nav('admin/challenges') }}" title="Challenges"
+            <a href="/admin/reports" class="nav-link {{ $nav('admin/reports') }}" title="Road Alerts"
                data-turbo-frame="main-content" data-turbo-action="advance">
-                <i class="fa-solid fa-trophy"></i><span class="label">Challenges</span>
+                <i class="fa-solid fa-flag"></i>
+                <span class="label">Road Alerts</span>
+                @if($headerActiveReports > 0)<span class="nav-badge">{{ $headerActiveReports }}</span>@endif
             </a>
             <a href="/admin/sos" class="nav-link {{ $nav('admin/sos') }}" title="SOS Alerts"
                data-turbo-frame="main-content" data-turbo-action="advance">
@@ -743,8 +758,28 @@
                 <span class="label">SOS Alerts</span>
                 @if($headerActiveSos > 0)<span class="nav-badge">{{ $headerActiveSos }}</span>@endif
             </a>
+            <a href="/admin/challenges" class="nav-link {{ $nav('admin/challenges') }}" title="Challenges"
+               data-turbo-frame="main-content" data-turbo-action="advance">
+                <i class="fa-solid fa-trophy"></i><span class="label">Challenges</span>
+            </a>
+            <a href="/admin/routes" class="nav-link {{ $nav('admin/routes') }}" title="Routes"
+               data-turbo-frame="main-content" data-turbo-action="advance">
+                <i class="fa-solid fa-map"></i><span class="label">Routes</span>
+            </a>
+            <a href="/admin/vehicles" class="nav-link {{ $nav('admin/vehicles') }}" title="Vehicles"
+               data-turbo-frame="main-content" data-turbo-action="advance">
+                <i class="fa-solid fa-car"></i><span class="label">Vehicles</span>
+            </a>
 
             <div class="nav-section">Platform</div>
+            <a href="/admin/leaderboards" class="nav-link {{ $nav('admin/leaderboards') }}" title="Leaderboards"
+               data-turbo-frame="main-content" data-turbo-action="advance">
+                <i class="fa-solid fa-ranking-star"></i><span class="label">Leaderboards</span>
+            </a>
+            <a href="/admin/activity" class="nav-link {{ $nav('admin/activity') }}" title="Activity Log"
+               data-turbo-frame="main-content" data-turbo-action="advance">
+                <i class="fa-solid fa-clipboard-list"></i><span class="label">Activity Log</span>
+            </a>
             <a href="/admin/settings" class="nav-link {{ $nav('admin/settings') }}" title="Settings"
                data-turbo-frame="main-content" data-turbo-action="advance">
                 <i class="fa-solid fa-gear"></i><span class="label">Settings</span>
@@ -811,6 +846,7 @@
                         <i class="fa-solid fa-plus"></i>
                     </button>
                     <div class="dropdown">
+                        <a href="/admin/reports" data-turbo-frame="main-content" data-turbo-action="advance"><i class="fa-solid fa-flag"></i> Road alerts</a>
                         <a href="/admin/challenges" data-turbo-frame="main-content" data-turbo-action="advance"><i class="fa-solid fa-trophy"></i> New challenge</a>
                         <a href="/admin/settings" data-turbo-frame="main-content" data-turbo-action="advance"><i class="fa-solid fa-bullhorn"></i> Broadcast message</a>
                         <a href="/admin/users" data-turbo-frame="main-content" data-turbo-action="advance"><i class="fa-solid fa-user-plus"></i> Manage users</a>

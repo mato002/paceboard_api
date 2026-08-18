@@ -3,54 +3,44 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\DeployRunner;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Artisan;
+use RuntimeException;
 
 class DeployController extends Controller
 {
-    public function run(Request $request): JsonResponse
+    public function run(Request $request, DeployRunner $deployRunner): JsonResponse
     {
-        $enabled = filter_var($this->envValue('DEPLOY_HOOK_ENABLED') ?? config('paceboard.deploy.enabled', false), FILTER_VALIDATE_BOOLEAN);
-        $expectedToken = (string) ($this->envValue('DEPLOY_HOOK_TOKEN') ?? config('paceboard.deploy.hook_token', ''));
-        $providedToken = (string) $request->header('X-Deploy-Token', '');
-
-        if (! $enabled) {
-            return response()->json(['message' => 'Deploy hook is disabled'], 403);
-        }
-
-        if ($expectedToken === '' || ! hash_equals($expectedToken, $providedToken)) {
+        if (! $this->hookAuthorized($request)) {
             return response()->json(['message' => 'Unauthorized deploy hook'], 401);
         }
 
-        $commands = [
-            'optimize:clear',
-            'migrate --force',
-            'config:cache',
-            'route:cache',
-        ];
-
-        $results = [];
-        foreach ($commands as $command) {
-            $exitCode = Artisan::call($command);
-            $results[] = [
-                'command' => $command,
-                'exit_code' => $exitCode,
-                'output' => trim(Artisan::output()),
-            ];
-
-            if ($exitCode !== 0) {
-                return response()->json([
-                    'message' => 'Deployment hook command failed',
-                    'results' => $results,
-                ], 500);
-            }
+        if (! $this->hookEnabled()) {
+            return response()->json(['message' => 'Deploy hook is disabled'], 403);
         }
 
-        return response()->json([
-            'message' => 'Deployment tasks completed',
-            'results' => $results,
-        ]);
+        try {
+            return response()->json($deployRunner->run());
+        } catch (RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 500);
+        }
+    }
+
+    private function hookEnabled(): bool
+    {
+        return filter_var(
+            $this->envValue('DEPLOY_HOOK_ENABLED') ?? config('paceboard.deploy.enabled', false),
+            FILTER_VALIDATE_BOOLEAN
+        );
+    }
+
+    private function hookAuthorized(Request $request): bool
+    {
+        $expected = (string) ($this->envValue('DEPLOY_HOOK_TOKEN') ?? config('paceboard.deploy.hook_token', ''));
+        $provided = (string) $request->header('X-Deploy-Token', '');
+
+        return $expected !== '' && hash_equals($expected, $provided);
     }
 
     private function envValue(string $key): ?string

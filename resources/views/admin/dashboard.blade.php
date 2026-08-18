@@ -14,6 +14,7 @@
         <p>Monitor fleet activity, safety reports, and emergency alerts across the PaceBoard network.</p>
         <div class="page-hero-actions">
             <a href="/admin/users" class="btn btn-primary btn-sm" data-turbo-frame="main-content" data-turbo-action="advance"><i class="fa-solid fa-users"></i> View users</a>
+            <a href="/admin/reports" class="btn btn-ghost btn-sm" data-turbo-frame="main-content" data-turbo-action="advance"><i class="fa-solid fa-flag"></i> Road alerts</a>
             <a href="/admin/sos" class="btn btn-ghost btn-sm" data-turbo-frame="main-content" data-turbo-action="advance"><i class="fa-solid fa-triangle-exclamation"></i> SOS center</a>
         </div>
     </div>
@@ -36,6 +37,7 @@
             <p class="meta"><i class="fa-solid fa-calendar-day"></i> {{ $stats['trips_today'] }} today</p>
         </div>
     </div>
+    <a href="/admin/reports" style="text-decoration:none;color:inherit" data-turbo-frame="main-content" data-turbo-action="advance">
     <div class="stat-card">
         <div class="stat-icon amber"><i class="fa-solid fa-flag"></i></div>
         <div class="stat-body">
@@ -44,6 +46,7 @@
             <p class="meta"><i class="fa-solid fa-road"></i> Road hazards & cameras</p>
         </div>
     </div>
+    </a>
     <div class="stat-card">
         <div class="stat-icon slate"><i class="fa-solid fa-road"></i></div>
         <div class="stat-body">
@@ -52,6 +55,7 @@
             <p class="meta"><i class="fa-solid fa-chart-line"></i> Platform-wide</p>
         </div>
     </div>
+    <a href="/admin/sos" style="text-decoration:none;color:inherit" data-turbo-frame="main-content" data-turbo-action="advance">
     <div class="stat-card">
         <div class="stat-icon {{ $stats['active_sos'] > 0 ? 'red' : 'green' }}">
             <i class="fa-solid fa-triangle-exclamation"></i>
@@ -68,6 +72,7 @@
             </p>
         </div>
     </div>
+    </a>
 </div>
 
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;">

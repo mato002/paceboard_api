@@ -2,6 +2,7 @@
 
 namespace App\View\Composers;
 
+use App\Models\CommunityReport;
 use App\Models\SosAlert;
 use App\Models\User;
 use App\Services\SettingsService;
@@ -15,6 +16,7 @@ class AdminLayoutComposer
     {
         $view->with([
             'headerActiveSos' => SosAlert::where('status', 'active')->count(),
+            'headerActiveReports' => CommunityReport::where('is_active', true)->count(),
             'headerUserCount' => User::count(),
             'maintenanceMode' => (bool) $this->settings->get('maintenance_mode', false),
         ]);

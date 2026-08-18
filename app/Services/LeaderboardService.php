@@ -118,7 +118,7 @@ class LeaderboardService
             default => $query,
         };
 
-        $reports = $query->get(['confirmations_count', 'verification_score']);
+        $reports = $query->get();
 
         if ($reports->isEmpty()) {
             return 0;

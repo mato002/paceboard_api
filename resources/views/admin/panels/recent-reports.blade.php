@@ -4,6 +4,7 @@
     <div class="panel">
         <div class="panel-header">
             <div class="panel-header-left"><i class="fa-solid fa-flag"></i> Recent reports</div>
+            <a href="/admin/reports" class="panel-action" data-turbo-frame="main-content" data-turbo-action="advance">View all</a>
         </div>
         <table>
             <thead><tr><th>Type</th><th>Road</th><th>Status</th><th></th></tr></thead>

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\TripPhoto;
 use App\Models\User;
 use App\Support\TripVisibility;
 use Illuminate\Http\Request;
@@ -57,15 +58,22 @@ class ProfileController extends Controller
             return response()->json(['message' => 'This profile is private'], 403);
         }
 
-        $photos = \App\Models\TripPhoto::query()
+        $visibleTripIds = TripVisibility::visibleToQuery($request->user())
             ->where('user_id', $user->id)
-            ->whereIn('trip_id', TripVisibility::visibleToQuery($request->user())->where('user_id', $user->id)->select('id'))
+            ->select('id');
+
+        $photos = TripPhoto::query()
+            ->where('user_id', $user->id)
+            ->where(function ($query) use ($visibleTripIds) {
+                $query->whereNull('trip_id')->orWhereIn('trip_id', $visibleTripIds);
+            })
             ->latest()
             ->paginate(30)
             ->through(fn ($photo) => [
                 'id' => $photo->id,
                 'trip_id' => $photo->trip_id,
                 'caption' => $photo->caption,
+                'media_type' => $photo->media_type ?? 'image',
                 'latitude' => $photo->latitude,
                 'longitude' => $photo->longitude,
                 'url' => Storage::disk('public')->url($photo->path),
@@ -73,6 +81,66 @@ class ProfileController extends Controller
             ]);
 
         return response()->json($photos);
+    }
+
+    public function storePhoto(Request $request)
+    {
+        $request->validate([
+            'photo' => 'nullable|file|mimes:jpeg,png,jpg,webp,mp4,mov,webm|max:20480',
+            'media' => 'nullable|file|mimes:jpeg,png,jpg,webp,mp4,mov,webm|max:20480',
+            'caption' => 'nullable|string|max:255',
+            'trip_id' => 'nullable|integer|exists:trips,id',
+        ]);
+
+        $file = $request->file('photo') ?? $request->file('media');
+        if (! $file) {
+            return response()->json(['message' => 'Photo or video file required'], 422);
+        }
+
+        $user = $request->user();
+        $trip = null;
+        if ($request->filled('trip_id')) {
+            $trip = $user->trips()->whereKey($request->integer('trip_id'))->first();
+            if (! $trip) {
+                return response()->json(['message' => 'Trip not found'], 404);
+            }
+        }
+
+        $mediaType = str_starts_with((string) $file->getMimeType(), 'video/') ? 'video' : 'image';
+        $folder = $trip ? "trips/{$trip->id}" : "gallery/{$user->id}";
+        $path = $file->store($folder, 'public');
+
+        $photo = TripPhoto::create([
+            'trip_id' => $trip?->id,
+            'user_id' => $user->id,
+            'path' => $path,
+            'media_type' => $mediaType,
+            'caption' => $request->caption,
+        ]);
+
+        return response()->json([
+            'message' => 'Photo uploaded',
+            'photo' => [
+                'id' => $photo->id,
+                'trip_id' => $photo->trip_id,
+                'caption' => $photo->caption,
+                'media_type' => $photo->media_type,
+                'url' => Storage::disk('public')->url($path),
+                'created_at' => $photo->created_at,
+            ],
+        ], 201);
+    }
+
+    public function destroyPhoto(Request $request, TripPhoto $photo)
+    {
+        if ($photo->user_id !== $request->user()->id) {
+            abort(403);
+        }
+
+        Storage::disk('public')->delete($photo->path);
+        $photo->delete();
+
+        return response()->json(['message' => 'Photo deleted']);
     }
 
     public function nearby(Request $request)
@@ -144,9 +212,18 @@ class ProfileController extends Controller
         return response()->json($request->user());
     }
 
+    public function avatar(User $user)
+    {
+        if (! $user->avatar_path || ! Storage::disk('public')->exists($user->avatar_path)) {
+            abort(404);
+        }
+
+        return Storage::disk('public')->response($user->avatar_path);
+    }
+
     public function uploadAvatar(Request $request)
     {
-        $request->validate(['avatar' => 'required|image|max:2048']);
+        $request->validate(['avatar' => 'required|image|max:5120']);
 
         $user = $request->user();
 
@@ -156,11 +233,11 @@ class ProfileController extends Controller
 
         $path = $request->file('avatar')->store('avatars/'.$user->id, 'public');
         $user->update(['avatar_path' => $path]);
+        $user->refresh()
+            ->loadCount(['trips', 'vehicles', 'followers', 'following'])
+            ->load(['achievements']);
 
-        return response()->json([
-            'message' => 'Avatar updated',
-            'avatar_url' => Storage::disk('public')->url($path),
-        ]);
+        return response()->json($this->formatProfile($user, includeEmail: true));
     }
 
     private function formatProfile(User $user, bool $includeEmail): array

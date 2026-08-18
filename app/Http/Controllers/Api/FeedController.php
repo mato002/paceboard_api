@@ -124,11 +124,11 @@ class FeedController extends Controller
             ->orderByDesc('starts_at')
             ->first();
 
-        $challengeProgress = null;
+        $weeklyParticipant = null;
         if ($weeklyChallenge) {
-            $challengeProgress = ChallengeParticipant::where('user_id', $user->id)
+            $weeklyParticipant = ChallengeParticipant::where('user_id', $user->id)
                 ->where('challenge_id', $weeklyChallenge->id)
-                ->value('progress');
+                ->first();
         }
 
         $trendingRoutes = Route::query()
@@ -179,18 +179,9 @@ class FeedController extends Controller
             'user_name' => $user->name,
             'items' => $items,
             'leaderboard' => $leaderboard,
-            'weekly_challenge' => $weeklyChallenge ? [
-                'id' => $weeklyChallenge->id,
-                'title' => $weeklyChallenge->title,
-                'description' => $weeklyChallenge->description,
-                'type' => $weeklyChallenge->type,
-                'target_value' => (float) $weeklyChallenge->target_value,
-                'reward_points' => (int) $weeklyChallenge->reward_points,
-                'participants_count' => (int) $weeklyChallenge->participants_count,
-                'ends_at' => $weeklyChallenge->ends_at?->toIso8601String(),
-                'my_progress' => $challengeProgress !== null ? (float) $challengeProgress : null,
-                'joined' => $challengeProgress !== null,
-            ] : null,
+            'weekly_challenge' => $weeklyChallenge
+                ? \App\Support\ChallengePresenter::format($weeklyChallenge, $user, $weeklyParticipant)
+                : null,
             'trending_routes' => $trendingRoutes,
             'meta' => [
                 'page' => $page,

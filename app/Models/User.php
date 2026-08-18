@@ -28,6 +28,11 @@ class User extends Authenticatable implements MustVerifyEmail
         'password',
         'remember_token',
         'fcm_token',
+        'avatar_path',
+    ];
+
+    protected $appends = [
+        'avatar_url',
     ];
 
     protected function casts(): array
@@ -106,9 +111,11 @@ class User extends Authenticatable implements MustVerifyEmail
 
     public function getAvatarUrlAttribute(): ?string
     {
-        return $this->avatar_path
-            ? \Illuminate\Support\Facades\Storage::disk('public')->url($this->avatar_path)
-            : null;
+        if (! $this->avatar_path) {
+            return null;
+        }
+
+        return url('/api/users/'.$this->id.'/avatar').'?v='.optional($this->updated_at)->timestamp;
     }
 
     public function sendEmailVerificationNotification(): void

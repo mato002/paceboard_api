@@ -3,6 +3,10 @@
 /**
  * Shared-hosting deploy hook. Lives in the web document root so GitHub
  * Actions can call it without SSH or Laravel /api routing.
+ *
+ * Production .env (on server, /paceboard/.env):
+ *   DEPLOY_HOOK_ENABLED=true
+ *   DEPLOY_HOOK_TOKEN=<same value as GitHub secret DEPLOY_HOOK_TOKEN>
  */
 header('Content-Type: application/json');
 
@@ -71,7 +75,7 @@ $provided = (string) ($_SERVER['HTTP_X_DEPLOY_TOKEN'] ?? '');
 
 if (! $enabled) {
     http_response_code(403);
-    echo json_encode(['message' => 'Deploy hook is disabled']);
+    echo json_encode(['message' => 'Deploy hook is disabled. Set DEPLOY_HOOK_ENABLED=true in server .env']);
     exit;
 }
 
@@ -81,33 +85,10 @@ if ($expected === '' || ! hash_equals($expected, $provided)) {
     exit;
 }
 
-$commands = [
-    'optimize:clear',
-    'migrate --force',
-    'config:cache',
-    'route:cache',
-];
-
-$results = [];
-foreach ($commands as $command) {
-    $exitCode = Illuminate\Support\Facades\Artisan::call($command);
-    $results[] = [
-        'command' => $command,
-        'exit_code' => $exitCode,
-        'output' => trim(Illuminate\Support\Facades\Artisan::output()),
-    ];
-
-    if ($exitCode !== 0) {
-        http_response_code(500);
-        echo json_encode([
-            'message' => 'Deployment hook command failed',
-            'results' => $results,
-        ]);
-        exit;
-    }
+try {
+    $payload = $app->make(App\Services\DeployRunner::class)->run();
+    echo json_encode($payload);
+} catch (Throwable $e) {
+    http_response_code(500);
+    echo json_encode(['message' => $e->getMessage()]);
 }
-
-echo json_encode([
-    'message' => 'Deployment tasks completed',
-    'results' => $results,
-]);

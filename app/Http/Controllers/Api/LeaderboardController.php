@@ -7,6 +7,7 @@ use App\Models\Leaderboard;
 use App\Services\LeaderboardEnrichmentService;
 use App\Services\SettingsService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class LeaderboardController extends Controller
 {
@@ -22,36 +23,93 @@ class LeaderboardController extends Controller
         $user = $request->user();
         $category = $request->category;
         $period = $request->period;
-        $minScore = (int) $settings->get('ranking_min_score', config('paceboard.ranking_min_score', 60));
-
-        $query = Leaderboard::with('user:id,name,country,avatar_path')
-            ->where('category', $category)
-            ->where('period', $period);
-
-        if (in_array($category, ['score', 'safety'])) {
-            $query->where('score_value', '>=', $minScore);
+        $minScore = 60;
+        try {
+            $minScore = (int) $settings->get('ranking_min_score', config('paceboard.ranking_min_score', 60));
+        } catch (\Throwable $e) {
+            Log::warning('Leaderboard settings lookup failed', ['error' => $e->getMessage()]);
         }
 
-        if ($scope === 'friends') {
-            $friendIds = $user->following()->pluck('users.id')->push($user->id);
-            $query->whereIn('user_id', $friendIds);
-        } elseif ($scope === 'national' && $user->country) {
-            $query->whereHas('user', fn ($q) => $q->where('country', $user->country));
-        }
+        try {
+            $query = Leaderboard::with('user')
+                ->where('category', $category)
+                ->where('period', $period);
 
-        $rawEntries = $query->orderByDesc('score_value')->take(100)->get()->values();
+            if (in_array($category, ['score', 'safety'])) {
+                $query->where('score_value', '>=', $minScore);
+            }
+
+            if ($scope === 'friends') {
+                $friendIds = $user->following()->pluck('users.id')->push($user->id);
+                $query->whereIn('user_id', $friendIds);
+            } elseif ($scope === 'national' && $user->country) {
+                $query->whereHas('user', fn ($q) => $q->where('country', $user->country));
+            }
+
+            $rawEntries = $query->orderByDesc('score_value')->take(100)->get()->values();
+        } catch (\Throwable $e) {
+            Log::error('Leaderboard query failed', ['error' => $e->getMessage()]);
+
+            return response()->json([
+                'category' => $category,
+                'period' => $period,
+                'scope' => $scope,
+                'category_meta' => $enrichment->categoryMeta($category),
+                'entries' => [],
+                'my_rank' => null,
+                'my_score' => null,
+                'my_rank_delta' => null,
+                'points_to_next_rank' => null,
+                'next_rank' => null,
+                'my_breakdown' => null,
+                'min_score_required' => in_array($category, ['score', 'safety']) ? $minScore : null,
+                'total_entries' => 0,
+                'message' => 'Rankings are temporarily unavailable.',
+            ]);
+        }
         foreach ($rawEntries as $index => $entry) {
             $entry->rank_position = $entry->rank_position ?? ($index + 1);
         }
 
-        $entries = $rawEntries->map(fn ($entry) => $enrichment->enrichEntry($entry, $category, $period))->values();
+        $entries = $rawEntries->map(function ($entry) use ($enrichment, $category, $period) {
+            try {
+                return $enrichment->enrichEntry($entry, $category, $period);
+            } catch (\Throwable) {
+                return [
+                    'id' => $entry->id,
+                    'user_id' => $entry->user_id,
+                    'category' => $entry->category,
+                    'period' => $entry->period,
+                    'rank_position' => $entry->rank_position,
+                    'score_value' => round((float) $entry->score_value, 2),
+                    'rank_delta' => null,
+                    'user' => $entry->user ? [
+                        'id' => $entry->user->id,
+                        'name' => $entry->user->name,
+                        'country' => $entry->user->country ?? null,
+                        'avatar_url' => $entry->user->avatar_url ?? null,
+                    ] : null,
+                ];
+            }
+        })->values();
 
         $myEntry = Leaderboard::where('user_id', $user->id)
             ->where('category', $category)
             ->where('period', $period)
             ->first();
 
-        $myContext = $enrichment->myContext($user->id, $category, $period, $myEntry, $rawEntries);
+        try {
+            $myContext = $enrichment->myContext($user->id, $category, $period, $myEntry, $rawEntries);
+        } catch (\Throwable) {
+            $myContext = [
+                'my_rank' => $myEntry?->rank_position,
+                'my_score' => $myEntry ? round((float) $myEntry->score_value, 2) : null,
+                'my_rank_delta' => null,
+                'points_to_next_rank' => null,
+                'next_rank' => null,
+                'my_breakdown' => null,
+            ];
+        }
 
         return response()->json([
             'category' => $category,
@@ -80,10 +138,17 @@ class LeaderboardController extends Controller
         $period = $request->period;
         $scope = $request->scope ?? 'global';
 
+        try {
+            $winners = $enrichment->winners($period, $scope, $request->user());
+        } catch (\Throwable $e) {
+            Log::error('Leaderboard winners failed', ['error' => $e->getMessage()]);
+            $winners = [];
+        }
+
         return response()->json([
             'period' => $period,
             'scope' => $scope,
-            'winners' => $enrichment->winners($period, $scope, $request->user()),
+            'winners' => $winners,
         ]);
     }
 }

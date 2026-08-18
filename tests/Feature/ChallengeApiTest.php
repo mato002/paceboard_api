@@ -27,6 +27,16 @@ class ChallengeApiTest extends TestCase
 
         $this->getJson('/api/challenges/mine')
             ->assertOk()
-            ->assertJsonPath('data.0.challenge.id', $challenge->id);
+            ->assertJsonPath('data.0.id', $challenge->id)
+            ->assertJsonPath('data.0.joined', true)
+            ->assertJsonPath('data.0.target_label', 'Drive 50 km');
+
+        $this->getJson('/api/challenges/summary')
+            ->assertOk()
+            ->assertJsonPath('active', 1);
+
+        $this->getJson("/api/challenges/{$challenge->id}")
+            ->assertOk()
+            ->assertJsonPath('challenge.status', 'joined');
     }
 }

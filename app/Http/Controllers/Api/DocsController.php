@@ -36,6 +36,9 @@ class DocsController extends Controller
                 ['GET', '/api/profile', 'Get own profile + achievements', true],
                 ['PUT', '/api/profile', 'Update profile', true],
                 ['POST', '/api/profile/avatar', 'Upload avatar (multipart)', true],
+                ['GET', '/api/users/{id}/avatar', 'Public profile photo', false],
+                ['POST', '/api/profile/photos', 'Upload a gallery photo or video', true],
+                ['DELETE', '/api/profile/photos/{id}', 'Delete own gallery photo', true],
                 ['GET', '/api/drivers/{id}', 'Public driver profile', true],
             ],
             'Trips' => [
@@ -66,9 +69,11 @@ class DocsController extends Controller
                 ['GET', '/api/routes/{id}/leaderboard?category=fastest', 'Per-route rankings', true],
             ],
             'Challenges' => [
-                ['GET', '/api/challenges', 'List active challenges', true],
+                ['GET', '/api/challenges', 'List challenges with progress', true],
+                ['GET', '/api/challenges/summary', 'Active / completed / points / streak', true],
+                ['GET', '/api/challenges/mine', 'My joined challenges', true],
+                ['GET', '/api/challenges/{id}', 'Challenge detail + progress', true],
                 ['POST', '/api/challenges/{id}/join', 'Join a challenge', true],
-                ['GET', '/api/challenges/mine', 'My challenge progress', true],
             ],
             'Community Reports' => [
                 ['GET', '/api/reports', 'List active road reports (bbox filter)', true],
