@@ -39,43 +39,83 @@ jobs:
             **/.env
             **/.env.*
 
-      # Upload only the standalone hook into the web document root.
-      # Do not overwrite index.php (custom paths to the Laravel app).
-      - name: Sync Deploy Hook To Web Root
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
-        with:
-          server: ${{ secrets.FTP_SERVER }}
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          local-dir: ./public/
-          # Subdomain document root: /public_html/paceboard
-          server-dir: /public_html/paceboard/
-          exclude: |
-            *
-            !deploy-hook.php
-
-      # Step 3a: Validate deploy-hook secrets exist
-      - name: Validate Post-Deploy Hook Secrets
+      # Drop stale Laravel caches so newly uploaded routes can load.
+      # Do not fail the job if a cache file is already absent.
+      - name: Clear Stale Laravel Caches
+        env:
+          FTP_SERVER: ${{ secrets.FTP_SERVER }}
+          FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
         run: |
-          if [ -z "${{ secrets.DEPLOY_HOOK_URL }}" ]; then
-            echo "DEPLOY_HOOK_URL secret is missing."
+          set -u
+          HOST="$(printf '%s' "$FTP_SERVER" | tr -d '\r' | xargs)"
+          HOST="${HOST#ftp://}"
+          HOST="${HOST#ftps://}"
+          for file in config.php routes-v7.php routes.php events.php; do
+            curl --silent --show-error --connect-timeout 20 \
+              --user "$FTP_USERNAME:$FTP_PASSWORD" \
+              --quote "DELE /paceboard/bootstrap/cache/$file" \
+              "ftp://$HOST/" || true
+          done
+
+      # Upload only deploy-hook.php. A folder sync would delete index.php.
+      - name: Upload Deploy Hook PHP
+        env:
+          FTP_SERVER: ${{ secrets.FTP_SERVER }}
+          FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+        run: |
+          set -euo pipefail
+          HOST="$(printf '%s' "$FTP_SERVER" | tr -d '\r' | xargs)"
+          HOST="${HOST#ftp://}"
+          HOST="${HOST#ftps://}"
+          REMOTE="public_html/paceboard/deploy-hook.php"
+
+          if curl --fail --show-error --silent --connect-timeout 20 --ftp-create-dirs \
+            --user "$FTP_USERNAME:$FTP_PASSWORD" \
+            -T deploy-web/deploy-hook.php \
+            "ftp://$HOST/$REMOTE"; then
+            echo "Uploaded deploy-hook.php over FTP"
+          elif curl --fail --show-error --silent --connect-timeout 20 --ftp-create-dirs --ssl --insecure \
+            --user "$FTP_USERNAME:$FTP_PASSWORD" \
+            -T deploy-web/deploy-hook.php \
+            "ftp://$HOST/$REMOTE"; then
+            echo "Uploaded deploy-hook.php over FTPES"
+          else
+            curl --fail --show-error --silent --connect-timeout 20 --ftp-create-dirs \
+              --user "$FTP_USERNAME:$FTP_PASSWORD" \
+              -T deploy-web/deploy-hook.php \
+              "ftps://$HOST/$REMOTE"
+            echo "Uploaded deploy-hook.php over FTPS"
+          fi
+
+          CODE="$(curl -sS -o /tmp/hook_get -w '%{http_code}' 'https://paceboard.zhengkyc.com/deploy-hook.php')"
+          echo "GET https://paceboard.zhengkyc.com/deploy-hook.php => HTTP $CODE"
+          cat /tmp/hook_get || true
+          echo
+          if [ "$CODE" != "405" ]; then
+            echo "Expected HTTP 405 (hook PHP is present). Got $CODE — file is not in the document root."
             exit 1
           fi
-          if [ -z "${{ secrets.DEPLOY_HOOK_TOKEN }}" ]; then
+
+      # Step 3: Trigger protected post-deploy tasks (migrate/cache) without SSH
+      - name: Run Post-Deploy Hook
+        env:
+          DEPLOY_HOOK_TOKEN: ${{ secrets.DEPLOY_HOOK_TOKEN }}
+        run: |
+          if [ -z "$DEPLOY_HOOK_TOKEN" ]; then
             echo "DEPLOY_HOOK_TOKEN secret is missing."
             exit 1
           fi
-
-      # Step 3b: Trigger protected post-deploy tasks (migrate/cache) without SSH
-      - name: Run Post-Deploy Hook
-        env:
-          DEPLOY_HOOK_URL: ${{ secrets.DEPLOY_HOOK_URL }}
-          DEPLOY_HOOK_TOKEN: ${{ secrets.DEPLOY_HOOK_TOKEN }}
-        run: |
-          URL="$(echo -n "$DEPLOY_HOOK_URL" | tr -d '\r' | xargs)"
-          echo "Calling deploy hook..."
-          curl --fail --show-error --silent \
-            -X POST "$URL" \
+          echo "Calling https://paceboard.zhengkyc.com/deploy-hook.php"
+          HTTP_CODE="$(curl -sS -o /tmp/hook_resp -w '%{http_code}' \
+            -X POST 'https://paceboard.zhengkyc.com/deploy-hook.php' \
             -H "X-Deploy-Token: $DEPLOY_HOOK_TOKEN" \
-            -H "Accept: application/json" \
-            -H "Content-Type: application/json"
+            -H 'Accept: application/json' \
+            -H 'Content-Type: application/json')"
+          echo "Hook HTTP $HTTP_CODE"
+          cat /tmp/hook_resp || true
+          echo
+          if [ "$HTTP_CODE" != "200" ]; then
+            exit 1
+          fi
