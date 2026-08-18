@@ -31,8 +31,18 @@ jobs:
           # The FTP account password (stored securely in repository secrets)
           password: ${{ secrets.FTP_PASSWORD }}
 
-          # Optional: Specify a target subfolder on your remote production server
-          # server-dir: /public_html/
+          # Deploy into your Namecheap document root
+          server-dir: /public_html/paceboard/
 
-          # Optional: Specify a local subfolder if you only want to deploy built assets (e.g., ./dist/)
-          # local-dir: ./
+          # Laravel-safe excludes (do not overwrite runtime/secrets)
+          exclude: |
+            **/.git*
+            **/.github/**
+            **/node_modules/**
+            **/vendor/**
+            **/storage/logs/**
+            **/storage/framework/cache/**
+            **/storage/framework/sessions/**
+            **/storage/framework/views/**
+            **/.env
+            **/.env.*
