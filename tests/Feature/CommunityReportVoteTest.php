@@ -34,4 +34,24 @@ class CommunityReportVoteTest extends TestCase
             'vote' => 'down',
         ]);
     }
+
+    public function test_nearby_includes_confidence_and_ahead_flag(): void
+    {
+        $user = $this->apiUser();
+        CommunityReport::create([
+            'user_id' => $user->id,
+            'type' => 'speed_camera',
+            'latitude' => -1.2860,
+            'longitude' => 36.8219,
+            'road_name' => 'Uhuru Highway',
+            'is_active' => true,
+            'verification_score' => 4,
+            'confirmations_count' => 8,
+        ]);
+
+        $this->getJson('/api/reports/nearby?lat=-1.2921&lng=36.8219&heading=0&road_name=Uhuru%20Highway')
+            ->assertOk()
+            ->assertJsonPath('0.confidence', fn ($v) => (int) $v >= 50)
+            ->assertJsonPath('0.ahead', true);
+    }
 }

@@ -17,31 +17,44 @@ class LeaderboardService
 
         foreach ($periods as $period) {
             $trips = $this->tripsInPeriod($user, $period)->get(['distance', 'score']);
+            $communityScore = $this->communityScore($user, $period);
 
-            if ($trips->isEmpty()) {
+            if ($trips->isEmpty() && $communityScore <= 0) {
                 Leaderboard::where('user_id', $user->id)->where('period', $period)->delete();
 
                 continue;
             }
 
-            $totalDistance = (float) $trips->sum('distance');
-            $tripCount = $trips->count();
-            $bestScore = (float) $trips->max('score');
-            $avgScore = (float) $trips->avg('score');
+            if ($trips->isNotEmpty()) {
+                $totalDistance = (float) $trips->sum('distance');
+                $tripCount = $trips->count();
+                $bestScore = (float) $trips->max('score');
+                $avgScore = (float) $trips->avg('score');
 
-            $this->upsert($user->id, 'distance', $period, $totalDistance);
-            $this->upsert($user->id, 'trips', $period, $tripCount);
+                $this->upsert($user->id, 'distance', $period, $totalDistance);
+                $this->upsert($user->id, 'trips', $period, $tripCount);
 
-            if ($bestScore >= $minScore) {
-                $this->upsert($user->id, 'score', $period, $bestScore);
+                if ($bestScore >= $minScore) {
+                    $this->upsert($user->id, 'score', $period, $bestScore);
+                } else {
+                    $this->remove($user->id, 'score', $period);
+                }
+
+                if ($avgScore >= $minScore) {
+                    $this->upsert($user->id, 'safety', $period, $avgScore);
+                } else {
+                    $this->remove($user->id, 'safety', $period);
+                }
             } else {
-                $this->remove($user->id, 'score', $period);
+                foreach (['distance', 'trips', 'score', 'safety'] as $cat) {
+                    $this->remove($user->id, $cat, $period);
+                }
             }
 
-            if ($avgScore >= $minScore) {
-                $this->upsert($user->id, 'safety', $period, $avgScore);
+            if ($communityScore > 0) {
+                $this->upsert($user->id, 'community', $period, $communityScore);
             } else {
-                $this->remove($user->id, 'safety', $period);
+                $this->remove($user->id, 'community', $period);
             }
         }
 
@@ -51,7 +64,7 @@ class LeaderboardService
     public function recalculateRanks(): void
     {
         foreach (['daily', 'weekly', 'monthly', 'yearly', 'all_time'] as $period) {
-            foreach (['distance', 'trips', 'score', 'safety'] as $category) {
+            foreach (['distance', 'trips', 'score', 'safety', 'community'] as $category) {
                 $entries = Leaderboard::where('category', $category)
                     ->where('period', $period)
                     ->orderByDesc('score_value')
@@ -91,5 +104,30 @@ class LeaderboardService
             ->where('category', $category)
             ->where('period', $period)
             ->delete();
+    }
+
+    private function communityScore(User $user, string $period): float
+    {
+        $query = $user->communityReports();
+
+        $query = match ($period) {
+            'daily' => $query->whereDate('created_at', today()),
+            'weekly' => $query->where('created_at', '>=', now()->startOfWeek()),
+            'monthly' => $query->where('created_at', '>=', now()->startOfMonth()),
+            'yearly' => $query->where('created_at', '>=', now()->startOfYear()),
+            default => $query,
+        };
+
+        $reports = $query->get(['confirmations_count', 'verification_score']);
+
+        if ($reports->isEmpty()) {
+            return 0;
+        }
+
+        return (float) (
+            ($reports->count() * 10)
+            + ($reports->sum('confirmations_count') * 5)
+            + ($reports->where('verification_score', '>', 0)->count() * 15)
+        );
     }
 }

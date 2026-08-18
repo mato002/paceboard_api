@@ -1,0 +1,38 @@
+# .github/workflows/deploy.yml
+# GitHub Actions workflow to automatically deploy website files to a production server via FTP on every push to the main branch.
+
+name: Production Deployment via FTP
+
+on:
+  push:
+    branches:
+      - main  # Change this to 'master' if your default branch uses the old naming convention
+
+jobs:
+  deploy:
+    name: FTP Deploy Job
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Checkout the repository code so the workflow can access its files
+      - name: Checkout Repository Code
+        uses: actions/checkout@v4
+
+      # Step 2: Deploy the repository files to the remote FTP server
+      - name: Sync Files to Server
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          # The FTP server hostname or IP address (stored securely in repository secrets)
+          server: ${{ secrets.FTP_SERVER }}
+
+          # The FTP account username (stored securely in repository secrets)
+          username: ${{ secrets.FTP_USERNAME }}
+
+          # The FTP account password (stored securely in repository secrets)
+          password: ${{ secrets.FTP_PASSWORD }}
+
+          # Optional: Specify a target subfolder on your remote production server
+          # server-dir: /public_html/
+
+          # Optional: Specify a local subfolder if you only want to deploy built assets (e.g., ./dist/)
+          # local-dir: ./

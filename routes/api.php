@@ -115,6 +115,7 @@ Route::middleware(['auth:sanctum', 'maintenance', 'throttle:api'])->group(functi
     Route::post('/reports/{report}/dispute', [CommunityReportController::class, 'dispute']);
 
     Route::get('/leaderboards', [LeaderboardController::class, 'index']);
+    Route::get('/leaderboards/winners', [LeaderboardController::class, 'winners']);
 
     Route::get('/challenges', [ChallengeController::class, 'index']);
     Route::get('/challenges/mine', [ChallengeController::class, 'myChallenges']);
