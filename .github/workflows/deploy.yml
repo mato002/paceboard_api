@@ -18,23 +18,15 @@ jobs:
       - name: Checkout Repository Code
         uses: actions/checkout@v4
 
-      # Step 2: Deploy the repository files to the remote FTP server
-      - name: Sync Files to Server
+      # Step 2: Deploy Laravel app files (outside public_html on Namecheap)
+      - name: Sync Laravel App To Server
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
-          # The FTP server hostname or IP address (stored securely in repository secrets)
           server: ${{ secrets.FTP_SERVER }}
-
-          # The FTP account username (stored securely in repository secrets)
           username: ${{ secrets.FTP_USERNAME }}
-
-          # The FTP account password (stored securely in repository secrets)
           password: ${{ secrets.FTP_PASSWORD }}
-
-          # Deploy into your Namecheap document root
-          server-dir: /public_html/paceboard/
-
-          # Laravel-safe excludes (do not overwrite runtime/secrets)
+          # This is the Laravel folder, not the web document root
+          server-dir: /paceboard/
           exclude: |
             **/.git*
             **/.github/**
@@ -46,6 +38,9 @@ jobs:
             **/storage/framework/views/**
             **/.env
             **/.env.*
+
+      # Do not overwrite public_html/paceboard/index.php — it has custom paths
+      # to the Laravel app outside public_html.
 
       # Step 3a: Validate deploy-hook secrets exist
       - name: Validate Post-Deploy Hook Secrets
@@ -61,8 +56,14 @@ jobs:
 
       # Step 3b: Trigger protected post-deploy tasks (migrate/cache) without SSH
       - name: Run Post-Deploy Hook
+        env:
+          DEPLOY_HOOK_URL: ${{ secrets.DEPLOY_HOOK_URL }}
+          DEPLOY_HOOK_TOKEN: ${{ secrets.DEPLOY_HOOK_TOKEN }}
         run: |
+          URL="$(echo -n "$DEPLOY_HOOK_URL" | tr -d '\r' | xargs)"
+          echo "Calling deploy hook..."
           curl --fail --show-error --silent \
-            -X POST "${{ secrets.DEPLOY_HOOK_URL }}" \
-            -H "X-Deploy-Token: ${{ secrets.DEPLOY_HOOK_TOKEN }}" \
-            -H "Accept: application/json"
+            -X POST "$URL" \
+            -H "X-Deploy-Token: $DEPLOY_HOOK_TOKEN" \
+            -H "Accept: application/json" \
+            -H "Content-Type: application/json"
