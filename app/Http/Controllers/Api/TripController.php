@@ -77,10 +77,9 @@ class TripController extends Controller
         ]);
 
         $pointsData = array_map(function ($point) use ($trip) {
+            // The Flutter app already sends speed in km/h (position.speed * 3.6).
+            // No server-side conversion needed.
             $speed = (float) $point['speed'];
-            if ($speed < 30) {
-                $speed *= 3.6;
-            }
 
             return [
                 'trip_id' => $trip->id,

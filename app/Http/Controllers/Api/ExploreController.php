@@ -15,22 +15,35 @@ class ExploreController extends Controller
     {
         $user = $request->user();
 
-        $trendingTrips = TripVisibility::visibleToQuery($user)
+        $trendingTripCollection = TripVisibility::visibleToQuery($user)
             ->with(['user:id,name,avatar_path,country', 'route:id,name,start_city,end_city'])
             ->withCount(['likes', 'comments', 'photos'])
             ->orderByDesc('likes_count')
             ->orderByDesc('ended_at')
             ->take(10)
-            ->get()
-            ->map(fn (Trip $trip) => $this->formatTrip($trip, $user));
+            ->get();
 
-        $recentTrips = TripVisibility::visibleToQuery($user)
+        $recentTripCollection = TripVisibility::visibleToQuery($user)
             ->with(['user:id,name,avatar_path'])
             ->withCount(['likes', 'photos'])
             ->latest('ended_at')
             ->take(10)
-            ->get()
-            ->map(fn (Trip $trip) => $this->formatTrip($trip, $user));
+            ->get();
+
+        // Batch-load liked trip IDs to avoid N+1 query inside formatTrip.
+        $allTripIds = $trendingTripCollection->pluck('id')
+            ->merge($recentTripCollection->pluck('id'))
+            ->unique();
+        $likedTripIds = $user->likedTrips()
+            ->whereIn('trip_id', $allTripIds)
+            ->pluck('trip_id')
+            ->flip();
+
+        $trendingTrips = $trendingTripCollection
+            ->map(fn (Trip $trip) => $this->formatTrip($trip, $likedTripIds));
+
+        $recentTrips = $recentTripCollection
+            ->map(fn (Trip $trip) => $this->formatTrip($trip, $likedTripIds));
 
         $topDrivers = Leaderboard::query()
             ->where('category', 'score')
@@ -71,7 +84,10 @@ class ExploreController extends Controller
         ]);
     }
 
-    private function formatTrip(Trip $trip, User $viewer): array
+    /**
+     * @param  \Illuminate\Support\Collection<int,mixed>  $likedTripIds  Pre-loaded set of liked trip IDs (flip'd for O(1) lookup)
+     */
+    private function formatTrip(Trip $trip, \Illuminate\Support\Collection $likedTripIds): array
     {
         return [
             'id' => $trip->id,
@@ -87,7 +103,7 @@ class ExploreController extends Controller
                 'name' => $trip->user?->name,
                 'avatar_url' => $trip->user?->avatar_url,
             ],
-            'liked_by_me' => $viewer->likedTrips()->where('trip_id', $trip->id)->exists(),
+            'liked_by_me' => $likedTripIds->has($trip->id),
             'ended_at' => $trip->ended_at?->toIso8601String(),
         ];
     }
