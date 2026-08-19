@@ -169,5 +169,7 @@ class DatabaseSeeder extends Seeder
             'starts_at' => now(),
             'ends_at' => now()->addMonths(3),
         ]);
+
+        $this->call(DriversAndRoutesSeeder::class);
     }
 }
