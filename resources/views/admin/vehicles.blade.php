@@ -15,6 +15,7 @@
                 <th>Owner</th>
                 <th>Vehicle</th>
                 <th>Registration</th>
+                <th>Trips</th>
                 <th>Fuel</th>
                 <th>Mileage</th>
                 <th>Added</th>
@@ -29,12 +30,13 @@
             </td>
             <td>{{ trim(($vehicle->year ? $vehicle->year.' ' : '').($vehicle->manufacturer ?? '').' '.($vehicle->model ?? '')) ?: '—' }}</td>
             <td>{{ $vehicle->registration_number ?? '—' }}</td>
+            <td>{{ number_format($vehicle->trips_count) }}</td>
             <td>{{ $vehicle->fuel_type ?? '—' }}</td>
             <td>{{ $vehicle->mileage ? number_format($vehicle->mileage).' km' : '—' }}</td>
             <td>{{ $vehicle->created_at->format('M j, Y') }}</td>
         </tr>
         @empty
-        <tr><td colspan="6" class="empty-state"><i class="fa-solid fa-car"></i>No vehicles registered</td></tr>
+        <tr><td colspan="7" class="empty-state"><i class="fa-solid fa-car"></i>No vehicles registered</td></tr>
         @endforelse
         </tbody>
     </table>

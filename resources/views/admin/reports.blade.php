@@ -5,7 +5,7 @@
 @section('page_subtitle', 'Community hazard reports saved from the driver app')
 
 @section('content')
-<div class="alerts-layout" style="display:grid;grid-template-columns:320px 1fr;gap:1.5rem;align-items:start;">
+<div class="layout-split alerts-layout">
     <div class="panel">
         <div class="panel-header">
             <div class="panel-header-left"><i class="fa-solid fa-plus-circle"></i> Post an alert</div>

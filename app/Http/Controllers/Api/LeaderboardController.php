@@ -71,11 +71,12 @@ class LeaderboardController extends Controller
             $entry->rank_position = $entry->rank_position ?? ($index + 1);
         }
 
-        $entries = $rawEntries->map(function ($entry) use ($enrichment, $category, $period) {
+        $followingIds = $user->following()->pluck('users.id')->all();
+        $entries = $rawEntries->map(function ($entry) use ($enrichment, $category, $period, $followingIds) {
             try {
-                return $enrichment->enrichEntry($entry, $category, $period);
+                $enriched = $enrichment->enrichEntry($entry, $category, $period);
             } catch (\Throwable) {
-                return [
+                $enriched = [
                     'id' => $entry->id,
                     'user_id' => $entry->user_id,
                     'category' => $entry->category,
@@ -91,6 +92,11 @@ class LeaderboardController extends Controller
                     ] : null,
                 ];
             }
+            if (isset($enriched['user']['id'])) {
+                $enriched['user']['is_following'] = in_array($enriched['user']['id'], $followingIds, true);
+            }
+
+            return $enriched;
         })->values();
 
         $myEntry = Leaderboard::where('user_id', $user->id)

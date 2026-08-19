@@ -14,7 +14,8 @@
 </div>
 
 <div class="panel">
-    <table>
+    <div class="table-scroll">
+    <table class="data-table">
         <thead>
             <tr>
                 <th>Driver</th>
@@ -77,6 +78,7 @@
         @endforelse
         </tbody>
     </table>
+    </div>
 </div>
 <div class="pagination-wrap">{{ $users->links() }}</div>
 @endsection

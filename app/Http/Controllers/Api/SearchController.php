@@ -22,11 +22,22 @@ class SearchController extends Controller
         $results = [];
 
         if (in_array($type, ['drivers', 'all'])) {
+            $followingIds = $request->user()->following()->pluck('users.id')->all();
             $results['drivers'] = User::where('name', 'like', "%{$q}%")
                 ->orWhere('email', 'like', "%{$q}%")
-                ->select('id', 'name', 'country', 'total_distance', 'driving_hours')
+                ->select('id', 'name', 'country', 'total_distance', 'driving_hours', 'avatar_path', 'updated_at')
                 ->limit(10)
-                ->get();
+                ->get()
+                ->map(fn (User $driver) => [
+                    'id' => $driver->id,
+                    'name' => $driver->name,
+                    'country' => $driver->country,
+                    'total_distance' => $driver->total_distance,
+                    'driving_hours' => $driver->driving_hours,
+                    'avatar_url' => $driver->avatar_url,
+                    'is_following' => in_array($driver->id, $followingIds, true),
+                    'is_me' => $driver->id === $request->user()->id,
+                ]);
         }
 
         if (in_array($type, ['routes', 'all'])) {
@@ -52,11 +63,15 @@ class SearchController extends Controller
         }
 
         if (in_array($type, ['cities', 'all'])) {
-            $cities = collect(config('kenya_cities', []))->keys()
-                ->filter(fn ($city) => stripos($city, $q) !== false)
-                ->values()
-                ->take(10);
-            $results['cities'] = $cities;
+            $results['cities'] = collect(config('kenya_cities', []))
+                ->filter(fn ($coords, $city) => stripos((string) $city, $q) !== false)
+                ->take(10)
+                ->map(fn ($coords, $city) => [
+                    'name' => $city,
+                    'lat' => $coords['lat'] ?? null,
+                    'lng' => $coords['lng'] ?? null,
+                ])
+                ->values();
         }
 
         return response()->json(['query' => $q, 'results' => $results]);

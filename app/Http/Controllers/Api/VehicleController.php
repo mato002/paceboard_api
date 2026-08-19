@@ -10,7 +10,10 @@ class VehicleController extends Controller
 {
     public function index(Request $request)
     {
-        return response()->json($request->user()->vehicles);
+        $vehicles = $request->user()->vehicles()->latest()->get()
+            ->map(fn (Vehicle $vehicle) => $vehicle->toApiArray());
+
+        return response()->json($vehicles);
     }
 
     public function store(Request $request)
@@ -27,7 +30,7 @@ class VehicleController extends Controller
 
         $vehicle = $request->user()->vehicles()->create($validated);
 
-        return response()->json($vehicle, 201);
+        return response()->json($vehicle->toApiArray(), 201);
     }
 
     public function serviceStatus(Request $request, Vehicle $vehicle)
@@ -36,17 +39,9 @@ class VehicleController extends Controller
             abort(403);
         }
 
-        $currentOdometer = (int) ($vehicle->mileage ?? 0);
-        $lastService = (int) ($vehicle->last_service_odometer_km ?? 0);
-        $interval = (int) ($vehicle->service_interval_km ?? 10000);
-        $kmSinceService = $currentOdometer - $lastService;
-        $kmUntilService = max(0, $interval - $kmSinceService);
-
         return response()->json([
             'vehicle_id' => $vehicle->id,
-            'km_since_service' => $kmSinceService,
-            'km_until_service' => $kmUntilService,
-            'service_due' => $kmSinceService >= $interval,
+            ...$vehicle->serviceSummary(),
             'last_service_at' => $vehicle->last_service_at,
         ]);
     }
@@ -67,7 +62,10 @@ class VehicleController extends Controller
             'mileage' => $request->odometer_km,
         ]);
 
-        return response()->json(['message' => 'Service recorded', 'vehicle' => $vehicle]);
+        return response()->json([
+            'message' => 'Service recorded',
+            'vehicle' => $vehicle->fresh()->toApiArray(),
+        ]);
     }
 
     public function show(Request $request, Vehicle $vehicle)
@@ -75,7 +73,8 @@ class VehicleController extends Controller
         if ($vehicle->user_id !== $request->user()->id) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
-        return response()->json($vehicle);
+
+        return response()->json($vehicle->toApiArray());
     }
 
     public function destroy(Request $request, Vehicle $vehicle)
@@ -84,6 +83,7 @@ class VehicleController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
         $vehicle->delete();
+
         return response()->json(['message' => 'Vehicle deleted']);
     }
 
@@ -105,6 +105,6 @@ class VehicleController extends Controller
 
         $vehicle->update($validated);
 
-        return response()->json($vehicle);
+        return response()->json($vehicle->fresh()->toApiArray());
     }
 }

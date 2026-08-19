@@ -13,7 +13,10 @@ class UserNotificationObserver
             $notification->user_id,
             $notification->title,
             $notification->body ?? '',
-            $notification->data ?? []
+            array_filter(array_merge(
+                ['type' => $notification->type],
+                is_array($notification->data) ? $notification->data : []
+            ), fn ($value) => $value !== null)
         );
     }
 }

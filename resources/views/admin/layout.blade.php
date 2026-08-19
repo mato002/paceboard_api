@@ -667,13 +667,84 @@
         form.inline { display: inline; }
 
         .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem; align-items: start; }
+        .layout-split { display: grid; grid-template-columns: minmax(280px, 320px) 1fr; gap: 1.5rem; align-items: start; }
+        .layout-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; align-items: start; }
+
+        .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+        .panel .table-scroll { margin: 0; }
+        .data-table { width: 100%; border-collapse: collapse; min-width: 720px; }
+        .data-table th, .data-table td { padding: .75rem 1rem; text-align: left; border-bottom: 1px solid var(--border); font-size: .875rem; vertical-align: middle; }
+        .data-table th { font-size: .75rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); background: #f8fafc; }
+        .data-table tbody tr:hover { background: #f8fafc; }
+
+        .filter-toolbar { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; }
+        .filter-toolbar .search-box,
+        .filter-toolbar select,
+        .filter-toolbar .form-group { flex: 1 1 180px; min-width: 0; }
+        .filter-toggle { display: none; }
+
+        .mobile-search-bar {
+            display: none;
+            padding: .75rem 1rem;
+            border-bottom: 1px solid var(--border);
+            background: #fff;
+        }
+        .mobile-search-bar.show { display: block; }
+        .mobile-search-bar .search-box { max-width: none; width: 100%; }
 
         @media (max-width: 1200px) {
             .header-center { display: none; }
             .header-datetime { display: none; }
+            .mobile-search-toggle { display: inline-flex; }
+        }
+        @media (min-width: 1201px) {
+            .mobile-search-toggle { display: none; }
         }
         @media (max-width: 1100px) {
             .challenges-grid { grid-template-columns: 1fr !important; }
+            .layout-split { grid-template-columns: 1fr; }
+            .layout-2col { grid-template-columns: 1fr; }
+        }
+        @media (max-width: 768px) {
+            .content { padding: 1rem; }
+            .page-toolbar { flex-direction: column; align-items: stretch; }
+            .page-toolbar .search-box { max-width: none !important; width: 100%; }
+            .filter-toolbar { flex-direction: column; align-items: stretch; }
+            .filter-toggle { display: inline-flex; margin-bottom: .5rem; }
+            .filter-panel.is-collapsed { display: none; }
+            .stat-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .panel { overflow: visible; }
+
+            .data-table { min-width: 0; }
+            .data-table thead { display: none; }
+            .data-table tbody tr {
+                display: block;
+                margin-bottom: .85rem;
+                border: 1px solid var(--border);
+                border-radius: var(--radius);
+                background: #fff;
+                overflow: hidden;
+            }
+            .data-table tbody td {
+                display: flex;
+                justify-content: space-between;
+                gap: 1rem;
+                align-items: flex-start;
+                padding: .55rem 1rem;
+                border-bottom: 1px solid #f1f5f9;
+            }
+            .data-table tbody td:last-child { border-bottom: none; }
+            .data-table tbody td::before {
+                content: attr(data-label);
+                font-weight: 700;
+                color: var(--muted);
+                font-size: .72rem;
+                text-transform: uppercase;
+                letter-spacing: .04em;
+                flex-shrink: 0;
+            }
+            .data-table tbody td.empty-state { display: block; text-align: center; }
+            .data-table tbody td.empty-state::before { display: none; }
         }
         @media (max-width: 900px) {
             .sidebar { transform: translateX(-100%); width: var(--sidebar-width) !important; }
@@ -696,8 +767,9 @@
 </head>
 <body>
 @php
-    $user = auth()->user();
+    $user = auth()->user()?->loadMissing('roles');
     $initial = $user ? strtoupper(substr($user->name, 0, 1)) : 'A';
+    $roleLabel = $user?->is_admin ? 'Administrator' : ($user?->roles->first()?->name ?? 'Staff');
     $nav = fn ($pattern) => request()->is($pattern) ? 'active' : '';
     $segments = collect(request()->segments())->slice(1);
     $pageTitles = [
@@ -825,6 +897,9 @@
             </div>
 
             <div class="header-right">
+                <button type="button" class="header-icon-btn mobile-search-toggle" id="mobileSearchToggle" title="Search users" aria-label="Search users">
+                    <i class="fa-solid fa-magnifying-glass"></i>
+                </button>
                 @if($maintenanceMode)
                     <span class="status-pill warning"><span class="dot"></span> Maintenance</span>
                 @else
@@ -864,7 +939,7 @@
                         <img src="{{ $avatarUrl }}" alt="{{ $user?->name }}" class="avatar">
                         <div class="profile-meta">
                             <span class="name">{{ $user?->name ?? 'Admin' }}</span>
-                            <span class="role">Super Administrator</span>
+                            <span class="role">{{ $roleLabel }}</span>
                         </div>
                         <i class="fa-solid fa-chevron-down chevron"></i>
                     </button>
@@ -892,6 +967,13 @@
                 </div>
             </div>
         </header>
+
+        <div class="mobile-search-bar" id="mobileSearchBar">
+            <form class="search-box" action="/admin/users" method="GET" role="search" data-turbo-frame="main-content" data-turbo-action="advance">
+                <i class="fa-solid fa-magnifying-glass"></i>
+                <input type="search" name="q" placeholder="Search users, email, phone…" value="{{ request('q') }}" aria-label="Search users">
+            </form>
+        </div>
 
         <main class="content">
             <turbo-frame id="main-content"
@@ -985,9 +1067,54 @@
     document.addEventListener('keydown', (e) => {
         if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
             e.preventDefault();
-            searchInput?.focus();
+            (searchInput || document.querySelector('#mobileSearchBar input'))?.focus();
+            document.getElementById('mobileSearchBar')?.classList.add('show');
         }
     });
+
+    const mobileSearchToggle = document.getElementById('mobileSearchToggle');
+    const mobileSearchBar = document.getElementById('mobileSearchBar');
+    mobileSearchToggle?.addEventListener('click', () => {
+        mobileSearchBar?.classList.toggle('show');
+        mobileSearchBar?.querySelector('input')?.focus();
+    });
+
+    function enhanceAdminTables() {
+        document.querySelectorAll('.panel table').forEach((table) => {
+            table.classList.add('data-table');
+            if (!table.closest('.table-scroll')) {
+                const wrap = document.createElement('div');
+                wrap.className = 'table-scroll';
+                table.parentNode.insertBefore(wrap, table);
+                wrap.appendChild(table);
+            }
+            const headers = [...table.querySelectorAll('thead th')].map((th) => th.textContent.trim());
+            if (!headers.length) return;
+            table.querySelectorAll('tbody tr').forEach((row) => {
+                row.querySelectorAll('td').forEach((td, i) => {
+                    if (headers[i] && !td.dataset.label) td.dataset.label = headers[i];
+                });
+            });
+        });
+
+        document.querySelectorAll('[data-filter-toolbar]').forEach((toolbar) => {
+            if (toolbar.dataset.enhanced === '1') return;
+            toolbar.dataset.enhanced = '1';
+            const panel = toolbar.querySelector('[data-filter-panel]');
+            if (!panel) return;
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'btn btn-outline btn-sm filter-toggle';
+            btn.innerHTML = '<i class="fa-solid fa-sliders"></i> Filters';
+            btn.addEventListener('click', () => panel.classList.toggle('is-collapsed'));
+            if (window.innerWidth <= 768) panel.classList.add('is-collapsed');
+            toolbar.insertBefore(btn, panel);
+        });
+    }
+
+    enhanceAdminTables();
+    document.addEventListener('turbo:load', enhanceAdminTables);
+    document.addEventListener('turbo:frame-load', enhanceAdminTables);
 })();
 </script>
 @include('admin.partials.turbo-swal')

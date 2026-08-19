@@ -149,7 +149,7 @@ Route::middleware(['auth:sanctum', 'maintenance', 'throttle:api'])->group(functi
     Route::patch('/notifications/{notification}/read', [NotificationController::class, 'markRead']);
     Route::post('/notifications/read-all', [NotificationController::class, 'markAllRead']);
 
-    Route::post('/sos', [SosController::class, 'trigger']);
+    Route::post('/sos', [SosController::class, 'trigger'])->middleware('throttle:3,1');
 
     Route::middleware('admin')->prefix('admin')->group(function () {
         Route::get('/stats', [AdminController::class, 'stats']);

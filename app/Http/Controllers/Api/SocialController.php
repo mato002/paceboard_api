@@ -8,6 +8,7 @@ use App\Models\Trip;
 use App\Models\TripComment;
 use App\Models\TripLike;
 use App\Models\User;
+use App\Models\UserNotification;
 use Illuminate\Http\Request;
 
 class SocialController extends Controller
@@ -18,7 +19,17 @@ class SocialController extends Controller
             return response()->json(['message' => 'You cannot follow yourself'], 422);
         }
 
-        $request->user()->following()->syncWithoutDetaching([$user->id]);
+        $changes = $request->user()->following()->syncWithoutDetaching([$user->id]);
+
+        if (! empty($changes['attached'])) {
+            UserNotification::create([
+                'user_id' => $user->id,
+                'type' => 'new_follower',
+                'title' => 'New follower',
+                'body' => $request->user()->name.' started following you.',
+                'data' => ['user_id' => $request->user()->id],
+            ]);
+        }
 
         return response()->json([
             'message' => 'Now following '.$user->name,
@@ -36,18 +47,47 @@ class SocialController extends Controller
         ]);
     }
 
-    public function followers(User $user)
+    public function followers(Request $request, User $user)
     {
         return response()->json([
-            'followers' => $user->followers()->select('users.id', 'users.name', 'users.country')->paginate(20),
+            'followers' => $this->presentPeople(
+                $request,
+                $user->followers()
+                    ->select('users.id', 'users.name', 'users.country', 'users.avatar_path', 'users.updated_at')
+                    ->paginate(20)
+            ),
         ]);
     }
 
-    public function following(User $user)
+    public function following(Request $request, User $user)
     {
         return response()->json([
-            'following' => $user->following()->select('users.id', 'users.name', 'users.country')->paginate(20),
+            'following' => $this->presentPeople(
+                $request,
+                $user->following()
+                    ->select('users.id', 'users.name', 'users.country', 'users.avatar_path', 'users.updated_at')
+                    ->paginate(20)
+            ),
         ]);
+    }
+
+    private function presentPeople(Request $request, $paginator)
+    {
+        $viewer = $request->user();
+        $followingIds = $viewer->following()->pluck('users.id')->all();
+
+        $paginator->getCollection()->transform(function (User $person) use ($viewer, $followingIds) {
+            return [
+                'id' => $person->id,
+                'name' => $person->name,
+                'country' => $person->country,
+                'avatar_url' => $person->avatar_url,
+                'is_following' => in_array($person->id, $followingIds, true),
+                'is_me' => $person->id === $viewer->id,
+            ];
+        });
+
+        return $paginator;
     }
 
     public function likeTrip(Request $request, Trip $trip)
@@ -92,6 +132,19 @@ class SocialController extends Controller
         ]);
 
         $comment->load('user:id,name');
+
+        if ($trip->user_id !== $request->user()->id) {
+            UserNotification::create([
+                'user_id' => $trip->user_id,
+                'type' => 'trip_comment',
+                'title' => 'New comment',
+                'body' => $request->user()->name.' commented on your trip.',
+                'data' => [
+                    'trip_id' => $trip->id,
+                    'user_id' => $request->user()->id,
+                ],
+            ]);
+        }
 
         return response()->json(['message' => 'Comment added', 'comment' => $comment], 201);
     }

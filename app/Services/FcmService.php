@@ -27,6 +27,8 @@ class FcmService
             return false;
         }
 
+        $payload = $this->stringify($data);
+
         $response = Http::withHeaders([
             'Authorization' => 'key='.$serverKey,
             'Content-Type' => 'application/json',
@@ -37,7 +39,7 @@ class FcmService
                 'body' => $body,
                 'sound' => 'default',
             ],
-            'data' => $data,
+            'data' => $payload,
             'priority' => 'high',
         ]);
 
@@ -66,7 +68,7 @@ class FcmService
             ])->post('https://fcm.googleapis.com/fcm/send', [
                 'registration_ids' => $chunk,
                 'notification' => ['title' => $title, 'body' => $body],
-                'data' => $data,
+                'data' => $this->stringify($data),
             ]);
 
             if ($response->successful()) {
@@ -75,5 +77,18 @@ class FcmService
         }
 
         return $sent;
+    }
+
+    private function stringify(array $data): array
+    {
+        $out = [];
+        foreach ($data as $key => $value) {
+            if ($value === null) {
+                continue;
+            }
+            $out[(string) $key] = is_scalar($value) ? (string) $value : json_encode($value);
+        }
+
+        return $out;
     }
 }

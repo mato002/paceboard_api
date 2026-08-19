@@ -2,25 +2,24 @@ name: PaceBoard API CI
 
 on:
   push:
-    paths:
-      - 'paceboard-api/**'
+    branches: [main]
   pull_request:
-    paths:
-      - 'paceboard-api/**'
+    branches: [main]
 
 jobs:
   test:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: paceboard-api
     steps:
       - uses: actions/checkout@v4
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.2'
-          extensions: mbstring, pdo_mysql
+          extensions: mbstring, pdo_sqlite
       - run: composer install --no-interaction
       - run: cp .env.example .env && php artisan key:generate
+      - run: |
+          php -r "file_put_contents('.env', preg_replace('/^DB_CONNECTION=.*/m', 'DB_CONNECTION=sqlite', file_get_contents('.env')));"
+          php -r "file_put_contents('.env', preg_replace('/^DB_DATABASE=.*/m', 'DB_DATABASE=database/database.sqlite', file_get_contents('.env')));"
+          touch database/database.sqlite
       - run: php artisan migrate --force
       - run: php artisan test

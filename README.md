@@ -1,58 +1,122 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# PaceBoard API
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Laravel backend for the **PaceBoard** driver community app — trips, hazards, leaderboards, SOS, challenges, and admin console.
 
-## About Laravel
+## Requirements
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+- PHP 8.2+
+- Composer
+- MySQL 8+ (or SQLite for local tests)
+- Node.js (optional — admin uses CDN assets)
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
-
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
-
-## Learning Laravel
-
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
-
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
-
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
-
-## Agentic Development
-
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
+## Quick start (local)
 
 ```bash
-composer require laravel/boost --dev
-
-php artisan boost:install
+composer install
+cp .env.example .env
+php artisan key:generate
+php artisan migrate
+php artisan db:seed
+php artisan serve
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+Admin console: `http://localhost:8000/admin/login`  
+API docs: `http://localhost:8000/api/docs`
 
-## Contributing
+### Demo accounts
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+| Role | Email | Password |
+|------|-------|----------|
+| Admin | `test@example.com` | `password` |
+| Driver | `james.kariuki@paceboard.test` | `password` |
 
-## Code of Conduct
+Seed demo drivers, nearby trips, and popular routes:
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+```bash
+php artisan db:seed --class=DriversAndRoutesSeeder
+```
 
-## Security Vulnerabilities
+## Production deploy
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+1. Push to `main` — GitHub Actions FTP-deploys to your server.
+2. Set production `.env` (see `.env.production.example`).
+3. Migrations run automatically on the next web request when `PACEBOARD_AUTO_MIGRATE=true`, or trigger manually:
+
+```bash
+php artisan db:seed --class=DriversAndRoutesSeeder   # optional demo data
+# or visit: /setup/migrate?token=YOUR_SETUP_TOKEN
+```
+
+4. **Run a queue worker** (required for push notifications):
+
+```bash
+php artisan queue:work --tries=3
+```
+
+5. **Schedule cron** (shared hosting cPanel):
+
+```
+* * * * * cd /path/to/paceboard && php artisan schedule:run >> /dev/null 2>&1
+```
+
+Scheduled tasks: prune expired hazard reports (hourly), recalculate leaderboards (daily 00:15).
+
+## Health check
+
+```
+GET /health
+GET /up          (Laravel default)
+```
+
+Returns database, storage, and cache status — use for uptime monitoring.
+
+## Key environment variables
+
+| Variable | Purpose |
+|----------|---------|
+| `APP_URL` | Public API URL |
+| `DEPLOY_HOOK_TOKEN` | GitHub deploy hook (optional) |
+| `SETUP_TOKEN` | Manual `/setup/migrate` trigger |
+| `PACEBOARD_AUTO_MIGRATE` | Auto-run migrations on web requests |
+| `FCM_ENABLED` + `FCM_SERVER_KEY` | Push notifications |
+| `QUEUE_CONNECTION` | Use `database` + worker in production |
+| `OPENWEATHER_API_KEY` | Live weather on dashboard |
+| `CORS_ALLOWED_ORIGINS` | Allowed web origins |
+
+## API overview
+
+Authenticated routes use `Authorization: Bearer {token}` (Laravel Sanctum).
+
+| Area | Endpoints |
+|------|-----------|
+| Auth | `POST /api/login`, `POST /api/register` |
+| Trips | `POST /api/trips/start`, sync, end |
+| Hazards | `GET/POST /api/reports`, `/api/reports/nearby` |
+| Drivers nearby | `GET /api/drivers/nearby?lat=&lng=` |
+| Routes | `GET /api/routes?filter=popular&limit=8` |
+| Leaderboards | `GET /api/leaderboards`, `/api/leaderboards/winners` |
+| Dashboard | `GET /api/dashboard?lat=&lng=` |
+| Vehicles | `GET/POST /api/vehicles` (includes trip stats) |
+| SOS | `POST /api/sos` |
+
+Full reference: `/api/docs`
+
+## Admin console
+
+Web UI at `/admin/*` for users, trips, road alerts (hazards), SOS, challenges, routes, vehicles, leaderboards, settings, and broadcasts.
+
+## Tests
+
+```bash
+php artisan test
+```
+
+CI runs on every push to `main`.
+
+## Flutter app
+
+Pair with the **paceboard-app** Flutter project. Set the API base URL in `dart_defines.json` to match `APP_URL`.
 
 ## License
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+Proprietary — PaceBoard Technologies.

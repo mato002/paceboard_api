@@ -6,6 +6,7 @@ use App\Http\Controllers\SetupController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', fn () => redirect('/admin/login'));
+Route::get('/health', \App\Http\Controllers\HealthController::class)->name('health');
 Route::get('/setup/migrate', [SetupController::class, 'migrate'])->name('setup.migrate');
 Route::post('/internal/deploy', [DeployController::class, 'run'])->middleware('throttle:4,1');
 Route::post('/deploy-hook.php', [DeployController::class, 'run'])->middleware('throttle:4,1');

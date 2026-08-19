@@ -2,12 +2,16 @@
 
 namespace Database\Seeders;
 
+use App\Models\CommunityReport;
+use App\Models\FuelLog;
 use App\Models\Leaderboard;
 use App\Models\Role;
 use App\Models\Route;
+use App\Models\SosAlert;
 use App\Models\Trip;
 use App\Models\TripPoint;
 use App\Models\User;
+use App\Models\UserNotification;
 use App\Models\Vehicle;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
@@ -39,6 +43,10 @@ class DriversAndRoutesSeeder extends Seeder
         }
 
         $this->seedLeaderboards($drivers);
+        $this->seedFuelLogs($drivers);
+        $this->seedSosAlerts($drivers);
+        $this->seedNotifications($drivers);
+        $this->seedFuelPriceReports($drivers[0]);
     }
 
     /**
@@ -326,6 +334,127 @@ class DriversAndRoutesSeeder extends Seeder
                     );
                 }
             }
+        }
+    }
+
+    /**
+     * @param  list<User>  $drivers
+     */
+    private function seedFuelLogs(array $drivers): void
+    {
+        foreach ($drivers as $index => $driver) {
+            $vehicle = $driver->vehicles()->first();
+            if (! $vehicle || $driver->fuelLogs()->exists()) {
+                continue;
+            }
+
+            FuelLog::create([
+                'user_id' => $driver->id,
+                'vehicle_id' => $vehicle->id,
+                'liters' => 42.5,
+                'cost' => 7420,
+                'odometer_km' => $vehicle->mileage,
+                'fuel_type' => $vehicle->fuel_type ?? 'petrol',
+                'filled_at' => now()->subDays(3 + $index),
+                'notes' => 'Shell station fill-up',
+            ]);
+        }
+    }
+
+    /**
+     * @param  list<User>  $drivers
+     */
+    private function seedSosAlerts(array $drivers): void
+    {
+        if (SosAlert::query()->exists()) {
+            return;
+        }
+
+        $samples = [
+            ['driver' => 0, 'lat' => -1.2921, 'lng' => 36.8219, 'message' => 'Breakdown on Uhuru Highway', 'status' => 'active'],
+            ['driver' => 1, 'lat' => -1.3012, 'lng' => 36.8078, 'message' => 'Minor accident — need assistance', 'status' => 'active'],
+            ['driver' => 2, 'lat' => -1.2789, 'lng' => 36.8345, 'message' => 'Flat tyre near Parklands', 'status' => 'resolved'],
+        ];
+
+        foreach ($samples as $sample) {
+            $driver = $drivers[$sample['driver']];
+            $trip = $driver->trips()->whereNull('ended_at')->first();
+
+            SosAlert::create([
+                'user_id' => $driver->id,
+                'trip_id' => $trip?->id,
+                'latitude' => $sample['lat'],
+                'longitude' => $sample['lng'],
+                'status' => $sample['status'],
+                'message' => $sample['message'],
+                'resolved_at' => $sample['status'] === 'resolved' ? now()->subHours(2) : null,
+            ]);
+        }
+    }
+
+    /**
+     * @param  list<User>  $drivers
+     */
+    private function seedNotifications(array $drivers): void
+    {
+        $admin = User::where('email', 'test@example.com')->first();
+
+        foreach ($drivers as $index => $driver) {
+            if ($driver->notifications()->exists()) {
+                continue;
+            }
+
+            UserNotification::create([
+                'user_id' => $driver->id,
+                'type' => 'challenge',
+                'title' => 'New challenge available',
+                'body' => 'Join the Weekend Challenge and earn reward points.',
+                'data' => ['category' => 'weekend'],
+                'read_at' => $index % 2 === 0 ? now() : null,
+            ]);
+
+            UserNotification::create([
+                'user_id' => $driver->id,
+                'type' => 'leaderboard',
+                'title' => 'You moved up the leaderboard',
+                'body' => 'Great driving — you climbed to rank #'.($index + 2).' this week.',
+                'data' => ['period' => 'weekly'],
+            ]);
+        }
+
+        if ($admin && ! $admin->notifications()->exists()) {
+            UserNotification::create([
+                'user_id' => $admin->id,
+                'type' => 'system',
+                'title' => 'Demo data seeded',
+                'body' => 'Drivers, routes, and nearby trips are ready for testing.',
+            ]);
+        }
+    }
+
+    private function seedFuelPriceReports(User $reporter): void
+    {
+        $stations = [
+            ['lat' => -1.2880, 'lng' => 36.8200, 'road' => 'Shell Kenyatta Avenue', 'desc' => 'Super 174.8 / Diesel 164.9'],
+            ['lat' => -1.2950, 'lng' => 36.8120, 'road' => 'Total Mombasa Road', 'desc' => 'Super 175.2 / Diesel 165.5'],
+            ['lat' => -1.2700, 'lng' => 36.8050, 'road' => 'Rubis Waiyaki Way', 'desc' => 'Super 174.5 / Diesel 164.2'],
+        ];
+
+        foreach ($stations as $station) {
+            CommunityReport::firstOrCreate(
+                [
+                    'user_id' => $reporter->id,
+                    'type' => 'fuel_price',
+                    'latitude' => $station['lat'],
+                    'longitude' => $station['lng'],
+                ],
+                [
+                    'road_name' => $station['road'],
+                    'description' => $station['desc'],
+                    'is_active' => true,
+                    'expires_at' => now()->addDays(14),
+                ]
+            );
         }
     }
 }

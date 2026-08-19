@@ -5,9 +5,10 @@
 @section('page_subtitle', 'Current ranks and reset controls')
 
 @section('content')
-<div class="page-toolbar">
+<div class="page-toolbar" data-filter-toolbar>
     <h2><i class="fa-solid fa-ranking-star"></i> Rankings</h2>
-    <form action="/admin/leaderboards" method="GET" style="display:flex;gap:.5rem;flex-wrap:wrap" data-turbo-frame="main-content" data-turbo-action="advance">
+    <div class="filter-toolbar" data-filter-panel>
+    <form action="/admin/leaderboards" method="GET" style="display:flex;gap:.5rem;flex-wrap:wrap;width:100%" data-turbo-frame="main-content" data-turbo-action="advance">
         <select name="category" onchange="this.form.submit()" style="padding:.4rem .6rem;border-radius:8px;border:1px solid var(--border);font-size:.8rem;font-family:inherit;">
             @forelse($categories as $option)
                 <option value="{{ $option }}" {{ $category === $option ? 'selected' : '' }}>{{ ucfirst($option) }}</option>
@@ -23,6 +24,7 @@
             @endforelse
         </select>
     </form>
+    </div>
 </div>
 
 <div class="panel">

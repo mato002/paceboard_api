@@ -350,7 +350,10 @@ class WebAdminController extends Controller
     public function vehicles()
     {
         return view('admin.vehicles', [
-            'vehicles' => Vehicle::with('user:id,name,email')->latest()->paginate(25),
+            'vehicles' => Vehicle::with('user:id,name,email')
+                ->withCount('trips')
+                ->latest()
+                ->paginate(25),
         ]);
     }
 

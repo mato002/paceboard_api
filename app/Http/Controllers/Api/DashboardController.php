@@ -5,11 +5,13 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\CommunityReport;
 use App\Models\Leaderboard;
+use App\Models\Trip;
+use App\Services\WeatherService;
 use Illuminate\Http\Request;
 
 class DashboardController extends Controller
 {
-    public function index(Request $request)
+    public function index(Request $request, WeatherService $weatherService)
     {
         $user = $request->user();
         $todayStart = now()->startOfDay();
@@ -35,6 +37,13 @@ class DashboardController extends Controller
             ->first();
 
         $nearbyAlerts = [];
+        $nearbyDriversCount = 0;
+        $weatherPayload = [
+            'weather_temp_c' => 24,
+            'weather_label' => 'Clear',
+            'visibility' => 'Good',
+        ];
+
         if ($request->filled(['lat', 'lng'])) {
             $lat = (float) $request->lat;
             $lng = (float) $request->lng;
@@ -68,6 +77,17 @@ class DashboardController extends Controller
             ->take(5)
             ->values()
             ->all();
+
+            $nearbyDriversCount = $this->countNearbyDrivers($lat, $lng);
+
+            $weather = $weatherService->fetch($lat, $lng);
+            if ($weather) {
+                $weatherPayload = [
+                    'weather_temp_c' => (int) round($weather['temperature_c'] ?? 24),
+                    'weather_label' => ucfirst((string) ($weather['description'] ?? $weather['condition'] ?? 'Clear')),
+                    'visibility' => $this->visibilityLabel($weather),
+                ];
+            }
         }
 
         $weekStart = now()->subDays(6)->startOfDay();
@@ -108,6 +128,21 @@ class DashboardController extends Controller
             ->get(['id', 'name', 'route_id', 'distance', 'duration_seconds', 'score', 'started_at', 'ended_at']);
 
         $drivingTimeToday = $todayTrips->sum('duration_seconds');
+        $primaryVehicle = $user->vehicles()->latest()->first();
+        $vehicleHealth = null;
+
+        if ($primaryVehicle) {
+            $service = $primaryVehicle->serviceSummary();
+            $vehicleHealth = [
+                'vehicle_id' => $primaryVehicle->id,
+                'nickname' => $primaryVehicle->nickname ?? trim($primaryVehicle->manufacturer.' '.$primaryVehicle->model),
+                'service_due' => $service['service_due'],
+                'km_until_service' => $service['km_until_service'],
+                'service_due_in_days' => $service['service_due_in_days'],
+            ];
+        }
+
+        $monthFuelLogs = $user->fuelLogs()->where('filled_at', '>=', $monthStart)->get();
 
         return response()->json([
             'greeting' => $this->greeting(),
@@ -134,9 +169,48 @@ class DashboardController extends Controller
             'leaderboard_rank' => $myRank?->rank_position,
             'leaderboard_score' => $myRank ? (float) $myRank->score_value : null,
             'nearby_alerts' => $nearbyAlerts,
+            'nearby_drivers_count' => $nearbyDriversCount,
             'weekly_distance' => $weeklyDistance,
             'weekly_score' => $weeklyScore,
+            ...$weatherPayload,
+            'vehicle_health' => $vehicleHealth,
+            'fuel_summary' => [
+                'total_liters' => round($monthFuelLogs->sum('liters'), 2),
+                'total_cost' => round($monthFuelLogs->sum('cost'), 2),
+                'entries_this_month' => $monthFuelLogs->count(),
+            ],
         ]);
+    }
+
+    private function countNearbyDrivers(float $lat, float $lng, float $radiusKm = 25): int
+    {
+        $activeTrips = Trip::query()
+            ->whereNull('ended_at')
+            ->with(['points' => fn ($q) => $q->latest('recorded_at')->limit(1)])
+            ->get();
+
+        return $activeTrips
+            ->filter(function ($trip) use ($lat, $lng, $radiusKm) {
+                $point = $trip->points->first();
+                if (! $point) {
+                    return false;
+                }
+
+                return $this->haversineKm($lat, $lng, (float) $point->latitude, (float) $point->longitude) <= $radiusKm;
+            })
+            ->count();
+    }
+
+    private function visibilityLabel(array $weather): string
+    {
+        $condition = strtolower((string) ($weather['condition'] ?? ''));
+
+        return match (true) {
+            str_contains($condition, 'fog') || str_contains($condition, 'mist') => 'Reduced',
+            str_contains($condition, 'rain') || str_contains($condition, 'drizzle') => 'Moderate',
+            str_contains($condition, 'snow') => 'Poor',
+            default => 'Good',
+        };
     }
 
     private function greeting(): string
@@ -148,6 +222,7 @@ class DashboardController extends Controller
         if ($hour < 17) {
             return 'Good Afternoon';
         }
+
         return 'Good Evening';
     }
 

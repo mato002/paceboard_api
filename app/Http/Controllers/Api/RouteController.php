@@ -13,6 +13,7 @@ class RouteController extends Controller
     {
         $request->validate([
             'filter' => 'nullable|in:popular,trending,recent',
+            'limit' => 'nullable|integer|min:1|max:50',
         ]);
 
         $query = Route::query()->withCount('trips');
@@ -23,7 +24,9 @@ class RouteController extends Controller
             default => $query->orderByDesc('total_trips'),
         };
 
-        return response()->json($query->paginate(20));
+        $limit = (int) ($request->limit ?? 20);
+
+        return response()->json($query->paginate($limit));
     }
 
     public function show(Route $route)
